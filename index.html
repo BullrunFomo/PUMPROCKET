@@ -829,9 +829,11 @@
       .content-area { grid-template-columns: 270px 1fr; }
     }
     @media (max-width: 620px) {
-      .content-area { grid-template-columns: 1fr; grid-template-rows: 1fr 320px; }
+      .content-area { grid-template-columns: 1fr; grid-template-rows: 320px 1fr; }
+      .game-panel { order: -1; }
       .bet-panel { border-right: none; border-top: 1px solid var(--border); overflow-y: auto; }
       .game-nav { display: none; }
+      .header-right { margin-left: auto; }
     }
 
     /* ─── Footer ─── */
