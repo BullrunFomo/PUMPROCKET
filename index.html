@@ -829,11 +829,17 @@
       .content-area { grid-template-columns: 270px 1fr; }
     }
     @media (max-width: 620px) {
+      .app { overflow-x: hidden; }
+      header { padding: 0 10px; gap: 6px; }
+      .logo { font-size: 1rem; }
+      .header-balance { padding: 6px 10px; font-size: 0.68rem; }
+      #connectWallet { padding: 6px 12px; font-size: 0.68rem; }
+      #connectWallet.connected { font-size: 0.65rem; }
+      .header-right { margin-left: auto; gap: 6px; }
       .content-area { grid-template-columns: 1fr; grid-template-rows: 320px 1fr; }
       .game-panel { order: -1; }
-      .bet-panel { border-right: none; border-top: 1px solid var(--border); overflow-y: auto; }
+      .bet-panel { border-right: none; border-top: 1px solid var(--border); overflow-y: auto; width: 100%; }
       .game-nav { display: none; }
-      .header-right { margin-left: auto; }
     }
 
     /* ─── Footer ─── */
