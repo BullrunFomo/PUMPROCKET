@@ -991,7 +991,7 @@
           <input type="number" id="autoCashOut" placeholder="0.00" min="1.01" step="0.1" />
         </div>
 
-        <div id="chainBadge" class="chain-badge off">◎ Off-chain mode</div>
+        <div id="chainBadge" class="chain-badge off">Off-chain mode</div>
 
         <button class="schedule-btn" id="scheduleBtn" disabled>Schedule Bet For Next Round</button>
         <button id="betBtn" disabled>Cashout</button>
@@ -1190,7 +1190,7 @@ function renderPlayers() {
       ${avatarHtml}
       <div class="player-info">
         <div class="player-name">${displayName}</div>
-        <div class="player-amount">◎ ${p.amount.toFixed(4)}</div>
+        <div class="player-amount">${SOL_SVG}${p.amount.toFixed(4)}</div>
       </div>
       ${statusHtml}`;
     list.appendChild(row);
@@ -1244,6 +1244,7 @@ function sendChat() {
 
 // ─── Solana helpers ──────────────────────────────────────────────────────────
 const SOL = window.solanaWeb3;
+const SOL_SVG = `<svg width="13" height="10" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-right:3px;flex-shrink:0"><path d="M1 8.5H10.5L13 10.5H3.5L1 8.5Z" fill="currentColor"/><path d="M1 4.5H10.5L13 6.5H3.5L1 4.5Z" fill="currentColor"/><path d="M13 2.5H3.5L1 0.5H10.5L13 2.5Z" fill="currentColor"/></svg>`;
 
 async function fetchProgramInfo() {
   try {
@@ -1256,13 +1257,13 @@ function updateChainBadge() {
   const el = document.getElementById('chainBadge');
   if (S.programInfo?.enabled && S.walletType === 'phantom') {
     el.className = 'chain-badge';
-    el.textContent = '◎ On-chain — ' + (S.programInfo.cluster || 'devnet');
+    el.innerHTML = SOL_SVG + 'On-chain — ' + (S.programInfo.cluster || 'devnet');
   } else if (S.walletType === 'demo') {
     el.className = 'chain-badge off';
-    el.textContent = '◎ Demo mode (off-chain)';
+    el.innerHTML = SOL_SVG + 'Demo mode (off-chain)';
   } else {
     el.className = 'chain-badge off';
-    el.textContent = '◎ Off-chain mode';
+    el.innerHTML = SOL_SVG + 'Off-chain mode';
   }
 }
 
@@ -1727,7 +1728,7 @@ function setMultiplierUI(val, mode) {
 
 function showPayout(text) {
   const pill = document.getElementById('payoutPill');
-  pill.textContent = '◎ ' + text;
+  pill.innerHTML = SOL_SVG + text;
   pill.classList.remove('hidden');
 }
 function hidePayout() {
