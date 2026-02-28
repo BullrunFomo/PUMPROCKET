@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pumprocket.io — Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #080d0a;
+      --panel:  #0d1610;
+      --border: rgba(255,255,255,0.07);
+      --text:   #e8f5ee;
+      --muted:  #5a7a66;
+      --accent: #1FEA8A;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.93rem;
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ─── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .logo {
+      font-size: 1.18rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .logo-pump   { color: #ffffff; }
+    .logo-rocket { color: var(--accent); text-shadow: 0 0 24px rgba(31,234,138,0.6), 0 0 8px rgba(31,234,138,0.4); }
+    .back-btn {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 5px 14px;
+      border-radius: 8px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .back-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ─── Layout ─── */
+    .docs-layout {
+      display: flex;
+      flex: 1;
+      width: 100%;
+    }
+
+    /* ─── Sidebar TOC ─── */
+    .toc {
+      width: 220px;
+      flex-shrink: 0;
+      padding: 48px 0 80px 32px;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      height: 100vh;
+    }
+    .toc-inner {
+      position: static;
+    }
+    .toc-title {
+      font-size: 0.6rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+      opacity: 0.7;
+    }
+    .toc a {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 5px 0 5px 14px;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s, background 0.15s, text-shadow 0.15s;
+      border-radius: 0 6px 6px 0;
+    }
+    .toc a:hover {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(31,234,138,0.06);
+      text-shadow: 0 0 12px rgba(31,234,138,0.5);
+    }
+
+    /* ─── Content ─── */
+    .docs-content {
+      flex: 1;
+      min-width: 0;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .docs-content h1 {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .docs-content .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 40px;
+    }
+
+    .docs-content h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 44px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .docs-content h3 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    .docs-content p { margin-bottom: 14px; color: rgba(232,245,238,0.8); }
+    .docs-content ul, .docs-content ol {
+      padding-left: 20px;
+      margin-bottom: 14px;
+      color: rgba(232,245,238,0.8);
+    }
+    .docs-content li { margin-bottom: 6px; }
+
+    .callout {
+      background: rgba(31,234,138,0.05);
+      border: 1px solid rgba(31,234,138,0.18);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: 0.85rem;
+      color: rgba(232,245,238,0.8);
+    }
+    .callout strong { color: var(--accent); }
+
+    .callout.warn {
+      background: rgba(255,214,0,0.04);
+      border-color: rgba(255,214,0,0.2);
+    }
+    .callout.warn strong { color: #ffd600; }
+
+    code {
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--accent);
+    }
+
+    .phase-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 20px;
+      font-size: 0.82rem;
+    }
+    .phase-table th {
+      text-align: left;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .phase-table td {
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      color: rgba(232,245,238,0.8);
+      vertical-align: top;
+    }
+    .phase-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .badge-green { background: rgba(31,234,138,0.12); color: var(--accent); border: 1px solid rgba(31,234,138,0.22); }
+    .badge-red   { background: rgba(255,59,107,0.1);  color: #ff3b6b;       border: 1px solid rgba(255,59,107,0.22); }
+    .badge-gold  { background: rgba(255,214,0,0.1);   color: #ffd600;       border: 1px solid rgba(255,214,0,0.22); }
+    .badge-gray  { background: rgba(255,255,255,0.06); color: var(--muted);  border: 1px solid var(--border); }
+
+    /* ─── Footer ─── */
+    footer {
+      display: flex;
+      align-items: center;
+      padding: 10px 24px;
+      font-size: 0.68rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    footer .footer-copy { flex: none; }
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    footer a:hover { color: var(--accent); border-color: var(--accent); }
+
+    @media (max-width: 680px) {
+      .toc { display: none; }
+      .docs-content { padding: 32px 18px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="/"><span class="logo-pump">PUMP</span><span class="logo-rocket">ROCKET</span></a>
+  <a class="back-btn" href="/">← Back to Game</a>
+</header>
+
+<div class="docs-layout">
+
+  <!-- Table of Contents -->
+  <nav class="toc">
+    <div class="toc-inner">
+      <div class="toc-title">On this page</div>
+      <a href="#overview">Overview</a>
+      <a href="#how-to-play">How to Play</a>
+      <a href="#game-phases">Game Phases</a>
+      <a href="#placing-a-bet">Placing a Bet</a>
+      <a href="#cashing-out">Cashing Out</a>
+      <a href="#auto-cashout">Auto Cash-Out</a>
+      <a href="#provably-fair">Provably Fair</a>
+      <a href="#on-chain">On-Chain Mode</a>
+      <a href="#wallet">Wallet & Balance</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="docs-content">
+
+    <h1><span style="color:#fff">PUMP</span><span style="color:var(--accent);text-shadow:0 0 24px rgba(31,234,138,0.6)">ROCKET</span> DOCS</h1>
+    <p class="subtitle">Everything you need to know about how the game works.</p>
+
+    <!-- Overview -->
+    <h2 id="overview">Overview</h2>
+    <p>
+      pumprocket.io is a provably fair multiplayer crash game built on <strong>Solana</strong>.
+      A multiplier starts at <code>1.00×</code> and climbs upward. At some unpredictable moment it
+      <em>crashes</em> — your goal is to cash out before that happens. Cash out in time and you
+      win your bet multiplied by the current value; fail and you lose your stake.
+    </p>
+    <p>
+      Every round result is cryptographically committed to before bets are placed, so the house
+      cannot change the crash point after seeing who has bet — this is what makes the game
+      <strong>provably fair</strong>.
+    </p>
+
+    <!-- How to play -->
+    <h2 id="how-to-play">How to Play</h2>
+    <ol>
+      <li>Connect your <strong>Phantom</strong> wallet (or use demo mode).</li>
+      <li>During the <strong>Betting</strong> phase, enter a bet amount and click <strong>Place Bet</strong>.</li>
+      <li>Watch the multiplier climb once the round starts flying.</li>
+      <li>Click <strong>Cash Out</strong> before the crash to lock in your winnings.</li>
+      <li>If the game crashes before you cash out, your bet is lost.</li>
+    </ol>
+
+    <div class="callout">
+      <strong>Tip:</strong> You can set an Auto Cash-Out multiplier so the game cashes you out
+      automatically when the target is reached — useful if you want a hands-off strategy.
+    </div>
+
+    <!-- Game Phases -->
+    <h2 id="game-phases">Game Phases</h2>
+    <p>Every round cycles through four distinct phases:</p>
+
+    <table class="phase-table">
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th>Duration</th>
+          <th>What happens</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-gray">Waiting</span></td>
+          <td>Briefly between rounds</td>
+          <td>The previous round has ended. The server prepares the next round.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">Betting</span></td>
+          <td>~10–15 seconds</td>
+          <td>A countdown is shown. You can place your bet during this window. Once it closes, no new bets are accepted.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-gold">Flying</span></td>
+          <td>Until crash</td>
+          <td>The multiplier climbs from <code>1.00×</code>. Players click Cash Out to lock in their winnings.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">Crashed</span></td>
+          <td>~2 seconds</td>
+          <td>The multiplier crashed. All uncashed bets are forfeit. The crash point is revealed on-chain.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Placing a bet -->
+    <h2 id="placing-a-bet">Placing a Bet</h2>
+    <p>
+      During the <strong>Betting</strong> phase, enter the amount of SOL you want to wager in the
+      bet input field. Use the quick-pick buttons (<strong>0.1 SOL</strong>, <strong>1 SOL</strong>,
+      <strong>MAX</strong>) to fill the field instantly.
+    </p>
+    <p>The minimum bet is <code>0.001 SOL</code>. The maximum is your available wallet balance.</p>
+    <p>
+      In <strong>on-chain mode</strong>, placing a bet builds a Solana transaction that Phantom will
+      ask you to sign. Your SOL is transferred into a secure escrow vault PDA on the Solana program.
+      The house cannot touch your funds until the round settles.
+    </p>
+
+    <!-- Cashing Out -->
+    <h2 id="cashing-out">Cashing Out</h2>
+    <p>
+      While the multiplier is flying, a <strong>Cash Out</strong> button appears showing your
+      potential payout in real time. Click it to lock in your winnings at the current multiplier.
+    </p>
+    <p>Your payout is calculated as:</p>
+    <div class="callout">
+      <strong>Payout = Bet Amount × Multiplier</strong><br>
+      Example: 0.5 SOL bet cashed out at 3.20× → <strong>1.6 SOL</strong> returned
+    </div>
+    <p>
+      In on-chain mode, the server signs and submits a <code>cash_out</code> instruction to the
+      Solana program, which transfers your payout directly from the vault to your wallet.
+    </p>
+
+    <!-- Auto Cash-Out -->
+    <h2 id="auto-cashout">Auto Cash-Out</h2>
+    <p>
+      Set a target multiplier in the <strong>Auto Cash-Out</strong> field before placing your bet.
+      When the multiplier reaches your target, the game will automatically cash you out — even if
+      you are not watching the screen.
+    </p>
+    <p>
+      The minimum auto cash-out value is <code>1.01×</code>. Leave the field empty or set it to
+      <code>0</code> to disable it and cash out manually.
+    </p>
+    <div class="callout warn">
+      <strong>Note:</strong> Auto cash-out is processed server-side. There is a small latency
+      window — if the crash happens at the exact same tick as your target, the crash takes priority.
+    </div>
+
+    <!-- Provably Fair -->
+    <h2 id="provably-fair">Provably Fair</h2>
+    <p>
+      pumprocket.io uses a <strong>commit-reveal</strong> scheme to guarantee that the house cannot
+      manipulate the crash point after bets are placed.
+    </p>
+    <h3>How it works</h3>
+    <ol>
+      <li>Before the betting phase opens, the server picks a crash point and a random salt.</li>
+      <li>It computes <code>commitment = sha256(crash_bps_le4 || salt32)</code> and stores this hash on-chain.</li>
+      <li>Players place their bets — the commitment is already locked on the blockchain.</li>
+      <li>At the end of the round, the server reveals the original crash point and salt.</li>
+      <li>The Solana program verifies that <code>sha256(revealed) == commitment</code>. If it doesn't match, the transaction is rejected.</li>
+    </ol>
+    <p>
+      This means you can independently verify any round: take the revealed <code>crash_bps</code>
+      and <code>salt</code>, hash them, and compare against the commitment that was stored on-chain
+      before bets were placed.
+    </p>
+    <div class="callout">
+      <strong>Crash points</strong> are expressed in basis points (bps): <code>100 bps = 1.00×</code>,
+      <code>250 bps = 2.50×</code>, <code>142 bps = 1.42×</code>, etc.
+    </div>
+
+    <!-- On-Chain Mode -->
+    <h2 id="on-chain">On-Chain Mode</h2>
+    <p>
+      When a Solana program is deployed and a Phantom wallet is connected, the game switches to
+      <strong>on-chain mode</strong> — indicated by the <code>◎ On-chain — devnet</code> badge.
+    </p>
+    <p>All financial operations are handled by the smart contract:</p>
+    <table class="phase-table">
+      <thead>
+        <tr><th>Instruction</th><th>Who signs</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>place_bet</code></td><td>Player</td><td>Transfers SOL from player wallet into the vault PDA escrow.</td></tr>
+        <tr><td><code>cash_out</code></td><td>Server (authority)</td><td>Transfers payout from vault to player wallet at the approved multiplier.</td></tr>
+        <tr><td><code>settle_crash</code></td><td>Server (authority)</td><td>Reveals crash point, verifies the commitment hash, ends the round.</td></tr>
+        <tr><td><code>start_round</code></td><td>Server (authority)</td><td>Opens betting and stores the crash commitment on-chain.</td></tr>
+        <tr><td><code>start_flying</code></td><td>Server (authority)</td><td>Closes betting and starts the multiplier climbing.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Without a deployed program (or without Phantom connected), the game runs in
+      <strong>off-chain / demo mode</strong> — gameplay is identical but no real SOL changes hands.
+    </p>
+
+    <!-- Wallet -->
+    <h2 id="wallet">Wallet & Balance</h2>
+    <p>
+      Click <strong>Connect Wallet</strong> in the top-right corner. If <strong>Phantom</strong>
+      is installed, it will prompt you to approve the connection and your SOL balance will be
+      displayed. If Phantom is not found, a demo wallet is created automatically.
+    </p>
+    <p>
+      Make sure your Phantom wallet is set to the correct network:
+    </p>
+    <ul>
+      <li><strong>Devnet</strong> — for testing with free SOL (get some at <a href="https://faucet.solana.com" target="_blank" style="color:var(--accent)">faucet.solana.com</a>)</li>
+      <li><strong>Mainnet-beta</strong> — for real SOL</li>
+    </ul>
+    <p>To switch networks in Phantom: Settings → Developer Settings → Change Network.</p>
+
+    <!-- FAQ -->
+    <h2 id="faq">FAQ</h2>
+
+    <h3>What is the minimum bet?</h3>
+    <p>The minimum bet is <code>0.001 SOL</code> in on-chain mode.</p>
+
+    <h3>Can I place multiple bets in one round?</h3>
+    <p>No — one bet per wallet per round. You must wait for the next round to bet again.</p>
+
+    <h3>What happens if I don't cash out in time?</h3>
+    <p>Your bet is lost. The SOL remains in the vault as house profit.</p>
+
+    <h3>What happens if the server goes offline mid-round?</h3>
+    <p>
+      Your SOL is safe in the on-chain vault. The server must submit a valid
+      <code>settle_crash</code> transaction to close the round — it cannot steal funds from
+      the vault without the authority keypair and a valid commitment reveal.
+    </p>
+
+    <h3>Is there a house edge?</h3>
+    <p>
+      The crash distribution is designed so that the expected value favors the house slightly.
+      The provably fair system ensures the crash point is set before bets are placed and cannot
+      be changed — but the house controls the distribution used to generate crash points.
+    </p>
+
+    <h3>What is demo mode?</h3>
+    <p>
+      Demo mode runs the full game locally without any Solana transactions. Balances are
+      simulated and no real SOL is involved. It is useful for testing or playing without a wallet.
+    </p>
+
+  </main>
+</div>
+
+<footer>
+  <div style="flex:1"></div>
+  <span class="footer-copy">© 2025 pumprocket.io — All rights reserved</span>
+  <div style="flex:1;display:flex;justify-content:flex-end"><a href="/disclaimer" target="_blank">Disclaimer</a></div>
+</footer>
+
+</body>
+</html>

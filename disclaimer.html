@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pumprocket.io — Legal Disclaimer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #080d0a;
+      --panel:  #0d1610;
+      --border: rgba(255,255,255,0.07);
+      --text:   #e8f5ee;
+      --muted:  #5a7a66;
+      --accent: #1FEA8A;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.93rem;
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ─── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .logo {
+      font-size: 1.18rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .logo-pump   { color: #ffffff; }
+    .logo-rocket { color: var(--accent); text-shadow: 0 0 24px rgba(31,234,138,0.6), 0 0 8px rgba(31,234,138,0.4); }
+    .back-btn {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 5px 14px;
+      border-radius: 8px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .back-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ─── Layout ─── */
+    .docs-layout {
+      display: flex;
+      flex: 1;
+      width: 100%;
+    }
+
+    /* ─── Sidebar TOC ─── */
+    .toc {
+      width: 220px;
+      flex-shrink: 0;
+      padding: 48px 0 80px 32px;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      height: 100vh;
+    }
+    .toc-title {
+      font-size: 0.6rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+      opacity: 0.7;
+    }
+    .toc a {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 5px 0 5px 14px;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s, background 0.15s, text-shadow 0.15s;
+      border-radius: 0 6px 6px 0;
+    }
+    .toc a:hover {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(31,234,138,0.06);
+      text-shadow: 0 0 12px rgba(31,234,138,0.5);
+    }
+
+    /* ─── Content ─── */
+    .docs-content {
+      flex: 1;
+      min-width: 0;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+
+    .docs-content h1 {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .docs-content .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+    .docs-content .last-updated {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 40px;
+    }
+    .docs-content h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 44px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .docs-content h3 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+    .docs-content p { margin-bottom: 14px; color: rgba(232,245,238,0.8); }
+    .docs-content ul, .docs-content ol {
+      padding-left: 20px;
+      margin-bottom: 14px;
+      color: rgba(232,245,238,0.8);
+    }
+    .docs-content li { margin-bottom: 6px; }
+
+    .callout {
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 20px 0;
+      font-size: 0.85rem;
+      color: rgba(232,245,238,0.8);
+    }
+    .callout.red   { background: rgba(255,59,107,0.05);  border: 1px solid rgba(255,59,107,0.2); }
+    .callout.red strong { color: #ff3b6b; }
+    .callout.green { background: rgba(31,234,138,0.05);  border: 1px solid rgba(31,234,138,0.18); }
+    .callout.green strong { color: var(--accent); }
+
+    /* ─── Footer ─── */
+    footer {
+      display: flex;
+      align-items: center;
+      padding: 10px 24px;
+      font-size: 0.68rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    footer .footer-copy { flex: 1; text-align: center; }
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    footer a:hover { color: var(--accent); border-color: var(--accent); }
+
+    @media (max-width: 680px) {
+      .toc { display: none; }
+      .docs-content { padding: 32px 18px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="/"><span class="logo-pump">PUMP</span><span class="logo-rocket">ROCKET</span></a>
+  <a class="back-btn" href="/">← Back to Game</a>
+</header>
+
+<div class="docs-layout">
+
+  <nav class="toc">
+    <div class="toc-title">On this page</div>
+    <a href="#acceptance">Acceptance of Terms</a>
+    <a href="#no-financial-advice">No Financial Advice</a>
+    <a href="#risk-warning">Risk Warning</a>
+    <a href="#eligibility">Eligibility</a>
+    <a href="#restricted-territories">Restricted Territories</a>
+    <a href="#no-guarantee">No Guarantee of Service</a>
+    <a href="#blockchain-risks">Blockchain Risks</a>
+    <a href="#intellectual-property">Intellectual Property</a>
+    <a href="#privacy">Privacy & Data</a>
+    <a href="#responsible-gaming">Responsible Gaming</a>
+    <a href="#indemnification">Indemnification</a>
+    <a href="#limitation">Limitation of Liability</a>
+    <a href="#governing-law">Governing Law</a>
+    <a href="#severability">Severability</a>
+    <a href="#changes">Changes</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <main class="docs-content">
+
+    <h1><span style="color:#fff">PUMP</span><span style="color:var(--accent);text-shadow:0 0 24px rgba(31,234,138,0.6)">ROCKET</span> LEGAL</h1>
+    <p class="subtitle">Legal Disclaimer & Terms of Use</p>
+    <p class="last-updated">Last updated: February 2025</p>
+
+    <div class="callout red">
+      <strong>Important Notice:</strong> pumprocket.io is a real-money prediction game built on the Solana blockchain. By accessing or using this platform you agree to be bound by this disclaimer in full. If you do not agree, you must immediately cease use of the platform. Participation carries significant financial risk — only play with funds you can afford to lose entirely.
+    </div>
+
+    <!-- 1 -->
+    <h2 id="acceptance">1. Acceptance of Terms</h2>
+    <p>
+      By accessing, browsing, or using pumprocket.io (the "Platform"), you confirm that you have read,
+      understood, and agree to be legally bound by this Legal Disclaimer and all applicable laws and
+      regulations. This agreement is effective from the first moment you access the Platform.
+    </p>
+    <p>
+      If you are using the Platform on behalf of an organisation, you represent that you have the
+      authority to bind that organisation to these terms. In that case, "you" and "your" refer to
+      that organisation.
+    </p>
+
+    <!-- 2 -->
+    <h2 id="no-financial-advice">2. No Financial Advice</h2>
+    <p>
+      Nothing on pumprocket.io constitutes financial, investment, legal, tax, or any other form of
+      professional advice. The Platform, its interface, results, multipliers, and any associated
+      communications are provided strictly for entertainment purposes.
+    </p>
+    <p>
+      You should not interpret any game outcome or feature of the Platform as a signal, forecast,
+      or recommendation regarding any financial instrument, digital asset, or investment strategy.
+      We strongly recommend consulting a qualified, licensed professional before making any financial
+      decisions involving digital assets.
+    </p>
+
+    <!-- 3 -->
+    <h2 id="risk-warning">3. Risk Warning</h2>
+    <p>
+      Participating in pumprocket.io involves wagering SOL (Solana), a highly volatile cryptocurrency
+      whose value may fluctuate significantly and without warning. You may lose the entire amount
+      wagered in any given session, and there is no guarantee of recovering any losses.
+    </p>
+    <ul>
+      <li>All bets are final once confirmed on-chain and are <strong>irreversible</strong>.</li>
+      <li>The Platform has an inherent house edge — over time, expected return is less than the amount wagered.</li>
+      <li>Past results do not predict future outcomes. Every round is statistically independent.</li>
+      <li>The crash point is determined randomly and cannot be predicted, manipulated, or influenced by any player.</li>
+      <li>The monetary value of SOL winnings may decrease between winning and conversion to fiat currency.</li>
+      <li>Playing under financial pressure, emotional distress, or intoxication significantly increases risk of loss.</li>
+    </ul>
+
+    <!-- 4 -->
+    <h2 id="eligibility">4. Eligibility</h2>
+    <p>By using the Platform you represent and warrant that:</p>
+    <ul>
+      <li>You are at least <strong>18 years of age</strong>, or the legal age of majority and gambling age in your jurisdiction, whichever is higher.</li>
+      <li>Online gambling, crypto wagering, or prediction games with real assets are <strong>not prohibited</strong> in your country, state, or jurisdiction.</li>
+      <li>You are accessing the Platform <strong>voluntarily</strong> and on your own behalf, not on behalf of any third party.</li>
+      <li>You are not a person who has been <strong>excluded or self-excluded</strong> from gambling platforms.</li>
+      <li>You have not been declared <strong>legally incapacitated</strong> or incapable of entering binding agreements.</li>
+    </ul>
+    <p>
+      It is your sole and exclusive responsibility to determine whether your use of the Platform is
+      lawful in your jurisdiction. pumprocket.io makes no representation that access is legal in all
+      locations, and accessing the Platform from a prohibited jurisdiction is done entirely at your own risk.
+    </p>
+
+    <!-- 5 -->
+    <h2 id="restricted-territories">5. Restricted Territories</h2>
+    <p>
+      The Platform is not available to residents or citizens of the following jurisdictions, and
+      persons located in these territories are prohibited from accessing or using the Platform:
+    </p>
+    <ul>
+      <li>United States of America and its territories</li>
+      <li>United Kingdom</li>
+      <li>France and its overseas territories</li>
+      <li>Netherlands and its territories (Aruba, Curaçao, Sint Maarten)</li>
+      <li>Australia</li>
+      <li>Any jurisdiction subject to comprehensive sanctions by OFAC, the EU, or the UN</li>
+      <li>Any other jurisdiction where online gambling or crypto wagering is explicitly prohibited by law</li>
+    </ul>
+    <p>
+      pumprocket.io reserves the right to restrict access from any additional territory at any time
+      without notice. Use of VPNs or other tools to circumvent geographic restrictions is a material
+      breach of these terms and may result in permanent suspension and forfeiture of funds.
+    </p>
+
+    <!-- 6 -->
+    <h2 id="no-guarantee">6. No Guarantee of Service</h2>
+    <p>
+      The Platform is provided on an <strong>"as is"</strong> and <strong>"as available"</strong> basis
+      without any warranties of any kind, whether express or implied, including but not limited to
+      implied warranties of merchantability, fitness for a particular purpose, or non-infringement.
+    </p>
+    <p>
+      We do not warrant that:
+    </p>
+    <ul>
+      <li>The Platform will be available uninterrupted, error-free, or free of viruses or harmful components.</li>
+      <li>Defects or errors will be corrected.</li>
+      <li>Results obtained from the Platform will be accurate or reliable.</li>
+    </ul>
+    <p>
+      The Platform may be suspended, modified, or permanently discontinued at any time without prior
+      notice. We are not liable for any losses — financial or otherwise — arising from downtime,
+      maintenance, bugs, network congestion, or any other service interruption.
+    </p>
+
+    <!-- 7 -->
+    <h2 id="blockchain-risks">7. Blockchain & Smart Contract Risks</h2>
+    <p>
+      pumprocket.io operates on the Solana blockchain. By using this Platform you explicitly
+      acknowledge and accept the following risks:
+    </p>
+    <ul>
+      <li><strong>Irreversibility:</strong> All blockchain transactions are permanent. Once confirmed, they cannot be cancelled, reversed, or retrieved under any circumstances.</li>
+      <li><strong>Network volatility:</strong> Solana network congestion, forks, outages, or protocol changes may delay, fail, or invalidate transactions.</li>
+      <li><strong>Smart contract risk:</strong> Despite security efforts, smart contracts may contain undiscovered bugs, logic errors, or vulnerabilities that could result in partial or total loss of funds.</li>
+      <li><strong>Wallet security:</strong> You are solely responsible for the security, custody, and backup of your wallet and private keys. pumprocket.io will <strong>never</strong> request your private key, seed phrase, or password.</li>
+      <li><strong>Transaction fees:</strong> All on-chain interactions require Solana network fees (gas) paid in SOL. These fees are non-refundable regardless of outcome.</li>
+      <li><strong>Regulatory risk:</strong> Changes in applicable law or regulation may affect the legality, functionality, or availability of blockchain-based services at any time.</li>
+      <li><strong>Third-party wallets:</strong> pumprocket.io is not responsible for issues arising from third-party wallet software (e.g. Phantom), browser extensions, or infrastructure providers.</li>
+    </ul>
+
+    <!-- 8 -->
+    <h2 id="intellectual-property">8. Intellectual Property</h2>
+    <p>
+      All content on the Platform — including but not limited to the name "pumprocket.io", logos,
+      graphics, user interface design, source code, game logic, and written content — is the
+      exclusive intellectual property of pumprocket.io and its operators, protected by applicable
+      copyright, trademark, and intellectual property laws.
+    </p>
+    <p>
+      You may not copy, reproduce, distribute, modify, create derivative works from, publicly display,
+      or exploit any part of the Platform without express prior written consent from pumprocket.io.
+    </p>
+
+    <!-- 9 -->
+    <h2 id="privacy">9. Privacy & Data</h2>
+    <p>
+      pumprocket.io does not require account registration. Wallet addresses used to interact with
+      the Platform are public information recorded on the Solana blockchain and are not considered
+      personally identifiable information under this disclaimer.
+    </p>
+    <p>
+      Optional profile data (username, avatar) provided by users is stored solely to enhance the
+      user experience and is not sold or shared with third parties. By providing any such data you
+      consent to its storage and use for these purposes.
+    </p>
+    <p>
+      All on-chain transaction data is permanently and publicly recorded on the Solana blockchain.
+      pumprocket.io has no ability to delete or modify on-chain records.
+    </p>
+
+    <!-- 10 -->
+    <h2 id="responsible-gaming">10. Responsible Gaming</h2>
+    <p>
+      pumprocket.io is committed to promoting responsible gaming. Gambling can be addictive.
+      If gaming is negatively affecting your finances, relationships, or mental health, please
+      seek help immediately.
+    </p>
+    <ul>
+      <li>Set a strict budget before playing and never exceed it.</li>
+      <li>Never chase losses — statistically, chasing does not improve outcomes.</li>
+      <li>Take regular breaks. Set time limits for each session.</li>
+      <li>Do not play while intoxicated, emotionally distressed, or under financial pressure.</li>
+      <li>Do not borrow money to fund gambling activity.</li>
+      <li>Keep gambling entertainment, not a source of income.</li>
+    </ul>
+    <h3>Support Organisations</h3>
+    <ul>
+      <li><strong>Gamblers Anonymous</strong> — gamblersmoanymous.org</li>
+      <li><strong>BeGambleAware</strong> — begambleaware.org</li>
+      <li><strong>GamCare</strong> — gamcare.org.uk</li>
+      <li><strong>National Problem Gambling Helpline (US)</strong> — 1-800-522-4700</li>
+    </ul>
+
+    <!-- 11 -->
+    <h2 id="indemnification">11. Indemnification</h2>
+    <p>
+      You agree to indemnify, defend, and hold harmless pumprocket.io, its operators, affiliates,
+      officers, agents, and licensors from and against any and all claims, liabilities, damages,
+      losses, costs, and expenses (including reasonable legal fees) arising out of or relating to:
+    </p>
+    <ul>
+      <li>Your use of or access to the Platform.</li>
+      <li>Your violation of any provision of this disclaimer.</li>
+      <li>Your violation of any applicable law or regulation.</li>
+      <li>Any claims by third parties relating to your use of the Platform.</li>
+    </ul>
+
+    <!-- 12 -->
+    <h2 id="limitation">12. Limitation of Liability</h2>
+    <p>
+      To the fullest extent permitted by applicable law, pumprocket.io and its operators shall not
+      be liable for any direct, indirect, incidental, special, consequential, exemplary, or punitive
+      damages of any kind arising from or related to your use of or inability to use the Platform,
+      including but not limited to:
+    </p>
+    <ul>
+      <li>Loss of SOL, cryptocurrency, or other digital assets.</li>
+      <li>Loss of profits, revenue, data, goodwill, or anticipated savings.</li>
+      <li>Technical failures, outages, smart contract bugs, or network issues.</li>
+      <li>Unauthorised access to or alteration of your wallet or transactions.</li>
+      <li>Conduct of any third party on the Platform.</li>
+      <li>Any other matter relating to the Platform, howsoever caused.</li>
+    </ul>
+    <p>
+      In jurisdictions that do not allow the exclusion of certain warranties or limitation of
+      liability, our liability is limited to the maximum extent permitted by law. In no event
+      shall our total cumulative liability exceed the amount of fees (if any) paid by you to
+      pumprocket.io in the thirty (30) days preceding the claim.
+    </p>
+    <p>
+      Your sole and exclusive remedy for any dissatisfaction with the Platform or these terms
+      is to discontinue use of the Platform.
+    </p>
+
+    <!-- 13 -->
+    <h2 id="governing-law">13. Governing Law & Dispute Resolution</h2>
+    <p>
+      This disclaimer and any disputes arising hereunder shall be governed by and construed in
+      accordance with applicable international law, without regard to conflict of law provisions.
+    </p>
+    <p>
+      Any dispute arising out of or in connection with this disclaimer that cannot be resolved
+      amicably shall be submitted to binding arbitration. You waive any right to participate in
+      class-action lawsuits or class-wide arbitration against pumprocket.io.
+    </p>
+
+    <!-- 14 -->
+    <h2 id="severability">14. Severability</h2>
+    <p>
+      If any provision of this disclaimer is found to be invalid, illegal, or unenforceable under
+      applicable law, that provision shall be modified to the minimum extent necessary to make it
+      enforceable, or severed if modification is not possible. The remaining provisions shall
+      continue in full force and effect.
+    </p>
+    <p>
+      The failure of pumprocket.io to enforce any provision of this disclaimer shall not constitute
+      a waiver of that provision or any other provision.
+    </p>
+
+    <!-- 15 -->
+    <h2 id="changes">15. Changes to This Disclaimer</h2>
+    <p>
+      pumprocket.io reserves the right to update, modify, or replace this disclaimer at any time
+      at its sole discretion. Changes are effective immediately upon being published on this page.
+      The "Last updated" date at the top of this page reflects the most recent revision.
+    </p>
+    <p>
+      Your continued use of the Platform following the posting of any changes constitutes your
+      acceptance of those changes. It is your responsibility to review this disclaimer periodically.
+    </p>
+
+    <!-- 16 -->
+    <h2 id="contact">16. Contact</h2>
+    <p>
+      If you have questions, concerns, or requests regarding this Legal Disclaimer, please reach
+      out via the official pumprocket.io community channels. We will endeavour to respond to all
+      legitimate enquiries in a timely manner.
+    </p>
+    <div class="callout green">
+      <strong>Note:</strong> pumprocket.io will never contact you first asking for your wallet credentials, seed phrase, or private key. Any such communication should be treated as a scam and reported immediately.
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div style="flex:1"></div>
+  <span class="footer-copy" style="flex:none">© 2025 pumprocket.io — All rights reserved</span>
+  <div style="flex:1;display:flex;justify-content:flex-end"><a href="/docs" target="_blank">Docs</a></div>
+</footer>
+
+</body>
+</html>
