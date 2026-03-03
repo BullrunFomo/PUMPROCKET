@@ -290,6 +290,9 @@ app.post('/api/prepare-bet', async (req, res) => {
   const { wallet, amount, autoCashout } = req.body;
   if (!wallet || !amount) return res.status(400).json({ error: 'Missing wallet or amount' });
   if (game.phase !== 'waiting') return res.status(400).json({ error: 'Betting closed' });
+  // Reject bets with < 5 s left — not enough time for Phantom signing + tx confirmation
+  // before start_flying lands on-chain (devnet confirmations take 1–3 s).
+  if (game.countdown <= 5) return res.status(400).json({ error: 'Too late to bet — wait for next round' });
 
   try {
     const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC } = global._solana;
@@ -363,7 +366,16 @@ app.post('/api/cashout', async (req, res) => {
     const playerPK     = new PublicKey(wallet);
     const [housePDA]   = findHousePDA();
     const [vaultPDA]   = findVaultPDA();
-    const { roundId: onChainRoundId } = await getOnChainState();
+
+    // start_flying takes 1–3 s to confirm on devnet; wait for on-chain FLYING before submitting.
+    let onChainRoundId;
+    for (let i = 0; i < 10; i++) {
+      const s = await getOnChainState();
+      if (s.phase === 2) { onChainRoundId = s.roundId; break; }   // 2 = PHASE_FLYING
+      if (i === 9) throw new Error('Timed out waiting for on-chain FLYING phase');
+      await new Promise(r => setTimeout(r, 500));
+    }
+
     const [betPDA]     = findBetPDA(playerPK, onChainRoundId);
 
     const data = Buffer.alloc(8 + 4);
