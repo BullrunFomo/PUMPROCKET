@@ -1421,7 +1421,7 @@ socket.on('phase', (data) => {
 socket.on('countdown', (n) => {
   document.getElementById('cdNum').textContent = n;
   document.getElementById('cdSub').textContent =
-    n > 2 ? n + ' seconds' : 'Starting soon...';
+    n > 5 ? n + ' seconds' : n > 2 ? 'Hurry up!' : 'Starting soon...';
 });
 
 socket.on('tick', ({ multiplier }) => {
@@ -1753,7 +1753,7 @@ function showCountdown(n) {
   const ov = document.getElementById('countdownOverlay');
   ov.classList.remove('hidden');
   document.getElementById('cdNum').textContent = n;
-  document.getElementById('cdSub').textContent = n > 2 ? n + ' seconds' : 'Starting soon...';
+  document.getElementById('cdSub').textContent = n > 5 ? n + ' seconds' : n > 2 ? 'Hurry up!' : 'Starting soon...';
 }
 function hideCountdown() {
   document.getElementById('countdownOverlay').classList.add('hidden');
