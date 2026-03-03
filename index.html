@@ -18,11 +18,11 @@
       --surface:  #181818;
       --surface2: #202020;
       --border:   #2A2A2A;
-      --accent:   #1FEA8A;
+      --accent:   #00E4A2;
       --accent2:  #ff3b6b;
-      --green:    #1FEA8A;
+      --green:    #00E4A2;
       --yellow:   #ffd600;
-      --purple:   #1FEA8A;
+      --purple:   #00E4A2;
       --text:     #e8e8e8;
       --muted:    #555555;
       --dark:     #0A0A0A;
@@ -66,7 +66,7 @@
     }
     .logo-rocket {
       color: var(--accent);
-      text-shadow: 0 0 24px rgba(31,234,138,0.6), 0 0 8px rgba(31,234,138,0.4);
+      text-shadow: 0 0 24px rgba(0,228,162,0.6), 0 0 8px rgba(0,228,162,0.4);
     }
 
     .game-nav {
@@ -99,7 +99,7 @@
       padding: 2px 7px;
       border-radius: 100px;
     }
-    .nav-badge.green { background: rgba(31,234,138,0.14); color: var(--accent); }
+    .nav-badge.green { background: rgba(0,228,162,0.14); color: var(--accent); }
     .nav-badge.muted { background: rgba(255,255,255,0.06); color: var(--muted); }
 
     .header-right { display: flex; align-items: center; gap: 10px; }
@@ -108,8 +108,8 @@
       display: flex;
       align-items: center;
       gap: 7px;
-      background: rgba(31,234,138,0.06);
-      border: 1px solid rgba(31,234,138,0.18);
+      background: rgba(0,228,162,0.06);
+      border: 1px solid rgba(0,228,162,0.18);
       border-radius: 8px;
       padding: 8px 18px;
       font-size: 0.76rem;
@@ -118,7 +118,7 @@
       cursor: pointer;
       transition: background 0.15s, box-shadow 0.15s;
     }
-    .header-balance:hover { background: rgba(31,234,138,0.11); box-shadow: 0 0 14px rgba(31,234,138,0.18); }
+    .header-balance:hover { background: rgba(0,228,162,0.11); box-shadow: 0 0 14px rgba(0,228,162,0.18); }
     .header-balance .hb-val { color: var(--accent); font-variant-numeric: tabular-nums; }
     .sol-logo { flex-shrink: 0; display: block; }
 
@@ -135,11 +135,11 @@
       color: #0A0A0A;
       transition: all 0.2s;
       white-space: nowrap;
-      box-shadow: 0 0 16px rgba(31,234,138,0.25);
+      box-shadow: 0 0 16px rgba(0,228,162,0.25);
     }
-    #connectWallet:hover { box-shadow: 0 0 22px rgba(31,234,138,0.45); }
+    #connectWallet:hover { box-shadow: 0 0 22px rgba(0,228,162,0.45); }
     #connectWallet.connected { all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); font-family: 'Inter', sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--text); white-space: nowrap; transition: border-color 0.15s, background 0.15s; }
-    #connectWallet.connected:hover { border-color: rgba(31,234,138,0.35); background: rgba(31,234,138,0.07); }
+    #connectWallet.connected:hover { border-color: rgba(0,228,162,0.35); background: rgba(0,228,162,0.07); }
 
     /* ─── History bar ─── */
     .history-bar {
@@ -181,7 +181,7 @@
       letter-spacing: 0.01em;
     }
     .cp-low  { background: rgba(255,255,255,0.06); color: #777777; border: 1px solid rgba(255,255,255,0.04); }
-    .cp-mid  { background: rgba(31,234,138,0.1);   color: var(--accent); border: 1px solid rgba(31,234,138,0.2); }
+    .cp-mid  { background: rgba(0,228,162,0.1);   color: var(--accent); border: 1px solid rgba(0,228,162,0.2); }
     .cp-high { background: rgba(255,214,0,0.1);    color: #ffd600; border: 1px solid rgba(255,214,0,0.2); }
 
     /* ─── Content area: 3 columns ─── */
@@ -228,7 +228,7 @@
     .online-dot {
       width: 6px; height: 6px; border-radius: 50%;
       background: var(--accent); flex-shrink: 0;
-      box-shadow: 0 0 5px rgba(31,234,138,0.8);
+      box-shadow: 0 0 5px rgba(0,228,162,0.8);
       animation: livePulse 1.8s ease-in-out infinite;
     }
     .chat-messages {
@@ -249,7 +249,7 @@
       transition: background 0.1s;
       border-left: 2px solid transparent;
     }
-    .chat-msg:hover { background: rgba(31,234,138,0.06); border-left-color: #1FEA8A; }
+    .chat-msg:hover { background: rgba(0,228,162,0.06); border-left-color: #00E4A2; }
     .chat-avatar {
       width: 28px; height: 28px;
       border-radius: 8px;
@@ -307,11 +307,11 @@
       transition: border-color 0.15s, box-shadow 0.15s;
     }
     .chat-input::placeholder { color: var(--muted); }
-    .chat-input:focus { border-color: rgba(31,234,138,0.35); box-shadow: 0 0 0 2px rgba(31,234,138,0.08); }
+    .chat-input:focus { border-color: rgba(0,228,162,0.35); box-shadow: 0 0 0 2px rgba(0,228,162,0.08); }
     .chat-send {
       width: 32px; height: 32px;
-      background: rgba(31,234,138,0.1);
-      border: 1px solid rgba(31,234,138,0.22);
+      background: rgba(0,228,162,0.1);
+      border: 1px solid rgba(0,228,162,0.22);
       border-radius: 8px;
       color: var(--accent);
       font-size: 0.82rem;
@@ -322,7 +322,7 @@
       flex-shrink: 0;
       transition: all 0.15s;
     }
-    .chat-send:hover { background: rgba(31,234,138,0.2); box-shadow: 0 0 10px rgba(31,234,138,0.2); }
+    .chat-send:hover { background: rgba(0,228,162,0.2); box-shadow: 0 0 10px rgba(0,228,162,0.2); }
 
     /* ─── Bet Panel ─── */
     .bet-panel {
@@ -372,7 +372,7 @@
       transition: border-color 0.18s, box-shadow 0.18s;
       font-variant-numeric: tabular-nums;
     }
-    .input-wrap input:focus { border-color: rgba(31,234,138,0.45); box-shadow: 0 0 0 3px rgba(31,234,138,0.08), inset 0 0 0 1px rgba(31,234,138,0.1); }
+    .input-wrap input:focus { border-color: rgba(0,228,162,0.45); box-shadow: 0 0 0 3px rgba(0,228,162,0.08), inset 0 0 0 1px rgba(0,228,162,0.1); }
     .input-wrap input::placeholder { color: var(--muted); font-weight: 400; }
     .input-wrap input[type=number]::-webkit-outer-spin-button,
     .input-wrap input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -404,13 +404,13 @@
       transition: all 0.15s;
       text-align: center;
     }
-    .bq:hover { border-color: var(--accent); color: var(--accent); background: rgba(31,234,138,0.07); }
+    .bq:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,228,162,0.07); }
 
     .chain-badge {
       display: inline-flex; align-items: center; gap: 5px;
       font-size: 0.57rem; font-weight: 700; letter-spacing: 0.08em;
-      color: var(--accent); background: rgba(31,234,138,0.08);
-      border: 1px solid rgba(31,234,138,0.2);
+      color: var(--accent); background: rgba(0,228,162,0.08);
+      border: 1px solid rgba(0,228,162,0.2);
       padding: 3px 10px; border-radius: 100px; margin-bottom: 10px;
     }
     .chain-badge.off { color: var(--muted); background: transparent; border-color: rgba(255,255,255,0.08); }
@@ -426,7 +426,7 @@
       cursor: pointer; margin-bottom: 8px;
       transition: all 0.15s;
     }
-    .schedule-btn:hover:not(:disabled) { color: var(--accent); background: rgba(31,234,138,0.05); }
+    .schedule-btn:hover:not(:disabled) { color: var(--accent); background: rgba(0,228,162,0.05); }
     .schedule-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
     #betBtn, #cashOutBtn {
@@ -437,23 +437,23 @@
       cursor: pointer; transition: all 0.2s;
     }
     #betBtn {
-      background: linear-gradient(135deg, #1FEA8A 0%, #0ec96a 100%);
+      background: linear-gradient(135deg, #00E4A2 0%, #00c48e 100%);
       color: #060f09;
-      box-shadow: 0 2px 16px rgba(31,234,138,0.22);
+      box-shadow: 0 2px 16px rgba(0,228,162,0.22);
     }
-    #betBtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 26px rgba(31,234,138,0.4); }
+    #betBtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 26px rgba(0,228,162,0.4); }
     #betBtn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
     #cashOutBtn {
       display: none;
-      background: linear-gradient(135deg, #1FEA8A 0%, #0ec96a 100%);
+      background: linear-gradient(135deg, #00E4A2 0%, #00c48e 100%);
       color: #060f09;
       animation: pulseGreen 1.1s ease-in-out infinite;
-      box-shadow: 0 2px 16px rgba(31,234,138,0.22);
+      box-shadow: 0 2px 16px rgba(0,228,162,0.22);
     }
-    #cashOutBtn:hover { transform: translateY(-1px); box-shadow: 0 6px 26px rgba(31,234,138,0.45); animation: none; }
+    #cashOutBtn:hover { transform: translateY(-1px); box-shadow: 0 6px 26px rgba(0,228,162,0.45); animation: none; }
     @keyframes pulseGreen {
-      0%,100% { box-shadow: 0 0 0 0 rgba(31,234,138,0.4); }
-      50%      { box-shadow: 0 0 0 10px rgba(31,234,138,0); }
+      0%,100% { box-shadow: 0 0 0 0 rgba(0,228,162,0.4); }
+      50%      { box-shadow: 0 0 0 10px rgba(0,228,162,0); }
     }
     #betStatus {
       margin-top: 8px; font-size: 0.67rem; font-weight: 500;
@@ -482,18 +482,18 @@
     .live-dot {
       width: 6px; height: 6px; border-radius: 50%;
       background: var(--accent);
-      box-shadow: 0 0 6px rgba(31,234,138,0.9);
+      box-shadow: 0 0 6px rgba(0,228,162,0.9);
       animation: livePulse 1.8s ease-in-out infinite;
       flex-shrink: 0;
     }
     @keyframes livePulse {
-      0%,100% { opacity: 1; box-shadow: 0 0 6px rgba(31,234,138,0.9); }
-      50%      { opacity: 0.5; box-shadow: 0 0 2px rgba(31,234,138,0.4); }
+      0%,100% { opacity: 1; box-shadow: 0 0 6px rgba(0,228,162,0.9); }
+      50%      { opacity: 0.5; box-shadow: 0 0 2px rgba(0,228,162,0.4); }
     }
     .players-count-chip {
       font-size: 0.58rem; font-weight: 700;
-      background: rgba(31,234,138,0.1);
-      border: 1px solid rgba(31,234,138,0.2);
+      background: rgba(0,228,162,0.1);
+      border: 1px solid rgba(0,228,162,0.2);
       color: var(--accent);
       padding: 2px 8px; border-radius: 6px;
     }
@@ -526,8 +526,8 @@
       transition: background 0.12s, border-left-color 0.12s;
     }
     .player-row:hover { background: rgba(255,255,255,0.03); }
-    .player-row.status-playing { border-left-color: rgba(31,234,138,0.5); }
-    .player-row.status-cashed  { border-left-color: rgba(31,234,138,0.3); }
+    .player-row.status-playing { border-left-color: rgba(0,228,162,0.5); }
+    .player-row.status-cashed  { border-left-color: rgba(0,228,162,0.3); }
     .player-row.status-lost    { border-left-color: rgba(255,59,107,0.4); }
     @keyframes slideIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:none} }
     .player-avatar {
@@ -545,15 +545,15 @@
     }
     .ps-playing {
       color: var(--accent);
-      background: rgba(31,234,138,0.1);
-      border: 1px solid rgba(31,234,138,0.2);
+      background: rgba(0,228,162,0.1);
+      border: 1px solid rgba(0,228,162,0.2);
       animation: playingPulse 2s ease-in-out infinite;
     }
     @keyframes playingPulse {
-      0%,100% { background: rgba(31,234,138,0.1); }
-      50%      { background: rgba(31,234,138,0.18); }
+      0%,100% { background: rgba(0,228,162,0.1); }
+      50%      { background: rgba(0,228,162,0.18); }
     }
-    .ps-cashed  { color: var(--accent); background: rgba(31,234,138,0.08); border: 1px solid rgba(31,234,138,0.15); }
+    .ps-cashed  { color: var(--accent); background: rgba(0,228,162,0.08); border: 1px solid rgba(0,228,162,0.15); }
     .ps-lost    { color: var(--accent2); background: rgba(255,59,107,0.08); border: 1px solid rgba(255,59,107,0.18); }
 
     /* ─── Game Panel ─── */
@@ -568,8 +568,8 @@
       content: '';
       position: absolute; inset: 0;
       background-image:
-        linear-gradient(rgba(31,234,138,0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(31,234,138,0.035) 1px, transparent 1px);
+        linear-gradient(rgba(0,228,162,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,228,162,0.035) 1px, transparent 1px);
       background-size: 55px 55px;
       pointer-events: none; z-index: 0;
     }
@@ -577,8 +577,8 @@
       content: '';
       position: absolute; inset: 0;
       background:
-        radial-gradient(ellipse at 70% 90%, rgba(31,234,138,0.07) 0%, transparent 55%),
-        radial-gradient(ellipse at 20% 20%, rgba(31,234,138,0.02) 0%, transparent 40%);
+        radial-gradient(ellipse at 70% 90%, rgba(0,228,162,0.07) 0%, transparent 55%),
+        radial-gradient(ellipse at 20% 20%, rgba(0,228,162,0.02) 0%, transparent 40%);
       pointer-events: none; z-index: 0;
     }
     #graphCanvas {
@@ -590,7 +590,7 @@
       position: absolute; font-size: 2.2rem; z-index: 2;
       pointer-events: none; left: 12%; top: 72%;
       transform: translate(-50%, -50%) rotate(0deg);
-      filter: drop-shadow(0 0 12px rgba(31,234,138,0.6));
+      filter: drop-shadow(0 0 12px rgba(0,228,162,0.6));
     }
     #rocket.crashed-anim { animation: rocketCrash 0.55s ease-in forwards; }
     @keyframes rocketCrash {
@@ -618,11 +618,11 @@
       font-weight: 900; line-height: 1;
       font-variant-numeric: tabular-nums;
       color: var(--accent);
-      text-shadow: 0 0 60px rgba(31,234,138,0.35), 0 0 20px rgba(31,234,138,0.2);
+      text-shadow: 0 0 60px rgba(0,228,162,0.35), 0 0 20px rgba(0,228,162,0.2);
       letter-spacing: -0.03em;
     }
     #multiplierDisplay.crashed { color: #ff3b6b; text-shadow: 0 0 60px rgba(255,59,107,0.5), 0 0 20px rgba(255,59,107,0.3); animation: shake 0.4s ease; }
-    #multiplierDisplay.cashed  { color: var(--accent); text-shadow: 0 0 60px rgba(31,234,138,0.5), 0 0 20px rgba(31,234,138,0.3); }
+    #multiplierDisplay.cashed  { color: var(--accent); text-shadow: 0 0 60px rgba(0,228,162,0.5), 0 0 20px rgba(0,228,162,0.3); }
     @keyframes shake {
       0%,100% { transform: translateX(0); }
       20% { transform: translateX(-7px) rotate(-1deg); }
@@ -631,8 +631,8 @@
     }
     #payoutPill {
       margin-top: 12px;
-      background: rgba(31,234,138,0.1);
-      border: 1px solid rgba(31,234,138,0.22);
+      background: rgba(0,228,162,0.1);
+      border: 1px solid rgba(0,228,162,0.22);
       color: var(--accent);
       font-size: 0.88rem; font-weight: 700;
       padding: 7px 22px; border-radius: 100px;
@@ -652,7 +652,7 @@
     .cd-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
     .cd-num {
       font-size: 6rem; font-weight: 900; color: var(--accent);
-      text-shadow: 0 0 50px rgba(31,234,138,0.5), 0 0 20px rgba(31,234,138,0.4);
+      text-shadow: 0 0 50px rgba(0,228,162,0.5), 0 0 20px rgba(0,228,162,0.4);
       line-height: 1; font-variant-numeric: tabular-nums;
       animation: cdPulse 1s ease-in-out infinite;
     }
@@ -681,7 +681,7 @@
       transition: border-color 0.15s, background 0.15s;
       flex-shrink: 0;
     }
-    .wallet-pill:hover { border-color: rgba(31,234,138,0.35); background: rgba(31,234,138,0.07); }
+    .wallet-pill:hover { border-color: rgba(0,228,162,0.35); background: rgba(0,228,162,0.07); }
     .wallet-pill-avatar {
       width: 28px; height: 28px;
       border-radius: 6px;
@@ -713,7 +713,7 @@
       border-radius: 14px;
       width: 320px;
       overflow: hidden;
-      box-shadow: 0 24px 72px rgba(0,0,0,0.7), 0 0 0 1px rgba(31,234,138,0.05);
+      box-shadow: 0 24px 72px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,228,162,0.05);
       animation: modalIn 0.18s ease;
     }
     @keyframes modalIn {
@@ -754,12 +754,12 @@
       font-size: 1.8rem; font-weight: 800;
       color: #060f09;
       overflow: hidden;
-      border: 2px solid rgba(31,234,138,0.25);
+      border: 2px solid rgba(0,228,162,0.25);
       cursor: pointer;
       transition: border-color 0.15s, box-shadow 0.15s;
       position: relative;
     }
-    .profile-avatar-preview:hover { border-color: rgba(31,234,138,0.55); box-shadow: 0 0 20px rgba(31,234,138,0.12); }
+    .profile-avatar-preview:hover { border-color: rgba(0,228,162,0.55); box-shadow: 0 0 20px rgba(0,228,162,0.12); }
     .profile-avatar-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .avatar-overlay {
       position: absolute; inset: 0;
@@ -776,15 +776,15 @@
       font-family: 'Inter', sans-serif;
       font-size: 0.66rem; font-weight: 700;
       padding: 5px 13px;
-      background: rgba(31,234,138,0.1);
-      border: 1px solid rgba(31,234,138,0.25);
+      background: rgba(0,228,162,0.1);
+      border: 1px solid rgba(0,228,162,0.25);
       border-radius: 7px;
       color: var(--accent);
       cursor: pointer;
       transition: all 0.15s;
       display: inline-block;
     }
-    .profile-upload-label:hover { background: rgba(31,234,138,0.18); }
+    .profile-upload-label:hover { background: rgba(0,228,162,0.18); }
     .profile-remove-btn {
       font-family: 'Inter', sans-serif;
       font-size: 0.66rem; font-weight: 600;
@@ -811,19 +811,19 @@
       transition: border-color 0.15s, box-shadow 0.15s;
     }
     .profile-input::placeholder { color: var(--muted); font-weight: 400; }
-    .profile-input:focus { border-color: rgba(31,234,138,0.45); box-shadow: 0 0 0 3px rgba(31,234,138,0.08); }
+    .profile-input:focus { border-color: rgba(0,228,162,0.45); box-shadow: 0 0 0 3px rgba(0,228,162,0.08); }
     .profile-save-btn {
       width: 100%; padding: 10px;
       border: none; border-radius: 8px;
-      background: linear-gradient(135deg, #1FEA8A 0%, #0ec96a 100%);
+      background: linear-gradient(135deg, #00E4A2 0%, #00c48e 100%);
       color: #060f09;
       font-family: 'Inter', sans-serif;
       font-size: 0.78rem; font-weight: 800;
       letter-spacing: 0.04em; text-transform: uppercase;
       cursor: pointer; transition: all 0.2s;
-      box-shadow: 0 2px 12px rgba(31,234,138,0.2);
+      box-shadow: 0 2px 12px rgba(0,228,162,0.2);
     }
-    .profile-save-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 22px rgba(31,234,138,0.4); }
+    .profile-save-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 22px rgba(0,228,162,0.4); }
 
     /* ─── Responsive ─── */
     @media (max-width: 960px) {
@@ -909,8 +909,8 @@
     .token-field.full { grid-column: 1 / -1; }
     .token-field .tf-val.muted { color: var(--muted); font-size: 0.82rem; font-weight: 500; }
     .token-tokenomics {
-      background: rgba(31,234,138,0.06);
-      border: 1px solid rgba(31,234,138,0.18);
+      background: rgba(0,228,162,0.06);
+      border: 1px solid rgba(0,228,162,0.18);
       border-radius: 10px;
       padding: 16px;
     }
@@ -933,9 +933,9 @@
     <div class="header-right">
       <div class="header-balance" id="headerBalanceWrap" style="display:none">
         <svg class="sol-logo" width="16" height="13" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M1 8.5H10.5L13 10.5H3.5L1 8.5Z" fill="#1FEA8A"/>
-          <path d="M1 4.5H10.5L13 6.5H3.5L1 4.5Z" fill="#1FEA8A"/>
-          <path d="M13 2.5H3.5L1 0.5H10.5L13 2.5Z" fill="#1FEA8A"/>
+          <path d="M1 8.5H10.5L13 10.5H3.5L1 8.5Z" fill="#00E4A2"/>
+          <path d="M1 4.5H10.5L13 6.5H3.5L1 4.5Z" fill="#00E4A2"/>
+          <path d="M13 2.5H3.5L1 0.5H10.5L13 2.5Z" fill="#00E4A2"/>
         </svg>
         <span class="hb-val" id="headerBalanceVal">0.0000</span>
       </div>
@@ -1155,7 +1155,7 @@ function markAllLost() {
   renderPlayers();
 }
 
-const AVATAR_COLORS = ['#1FEA8A','#17c470','#0db860','#ffd600','#ff3b6b','#ff9f43','#13a558'];
+const AVATAR_COLORS = ['#00E4A2','#17c470','#0db860','#ffd600','#ff3b6b','#ff9f43','#13a558'];
 function avatarColor(wallet) {
   let h = 0;
   for (let i = 0; i < wallet.length; i++) h = (h * 31 + wallet.charCodeAt(i)) & 0xffffffff;
@@ -1200,7 +1200,7 @@ function renderPlayers() {
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
-const CHAT_COLORS = ['#1FEA8A','#17c470','#0db860','#ffd600','#ff3b6b','#ff9f43','#13a558','#e8e8e8'];
+const CHAT_COLORS = ['#00E4A2','#17c470','#0db860','#ffd600','#ff3b6b','#ff9f43','#13a558','#e8e8e8'];
 function chatColor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
@@ -1307,9 +1307,9 @@ function drawGraph() {
   const toY = m => h - pad.b - ((m - 1) / (maxM - 1)) * gh;
 
   const crashed   = S.phase === 'crashed';
-  const lineColor = crashed ? '#ff3b6b' : '#1FEA8A';
-  const glowColor = crashed ? 'rgba(255,59,107,0.5)' : 'rgba(31,234,138,0.5)';
-  const fillStart = crashed ? 'rgba(255,59,107,0.1)' : 'rgba(31,234,138,0.1)';
+  const lineColor = crashed ? '#ff3b6b' : '#00E4A2';
+  const glowColor = crashed ? 'rgba(255,59,107,0.5)' : 'rgba(0,228,162,0.5)';
+  const fillStart = crashed ? 'rgba(255,59,107,0.1)' : 'rgba(0,228,162,0.1)';
 
   const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
   grad.addColorStop(0, fillStart);
@@ -1344,7 +1344,7 @@ function drawGraph() {
     rocket.style.left      = tx + 'px';
     rocket.style.top       = ty + 'px';
     rocket.style.transform = 'translate(-50%, -50%) rotate(0deg)';
-    rocket.style.filter    = 'drop-shadow(0 0 14px rgba(31,234,138,0.8))';
+    rocket.style.filter    = 'drop-shadow(0 0 14px rgba(0,228,162,0.8))';
     rocket.style.opacity   = '1';
   }
 }
@@ -1357,7 +1357,7 @@ function resetRocket() {
   rocket.style.left      = '12%';
   rocket.style.top       = '72%';
   rocket.style.transform = 'translate(-50%, -50%) rotate(0deg)';
-  rocket.style.filter    = 'drop-shadow(0 0 10px rgba(31,234,138,0.55))';
+  rocket.style.filter    = 'drop-shadow(0 0 10px rgba(0,228,162,0.55))';
   rocket.style.opacity   = '1';
 }
 
@@ -1715,7 +1715,7 @@ function setMultiplierUI(val, mode) {
         el.style.color = '#ffd600'; el.style.textShadow = '0 0 55px rgba(255,214,0,0.5)';
         label.style.color = '#ffd600';
       } else {
-        el.style.color = 'var(--accent)'; el.style.textShadow = '0 0 50px rgba(31,234,138,0.35)';
+        el.style.color = 'var(--accent)'; el.style.textShadow = '0 0 50px rgba(0,228,162,0.35)';
         label.style.color = 'var(--accent)';
       }
       break;
