@@ -290,9 +290,8 @@ app.post('/api/prepare-bet', async (req, res) => {
   const { wallet, amount, autoCashout } = req.body;
   if (!wallet || !amount) return res.status(400).json({ error: 'Missing wallet or amount' });
   if (game.phase !== 'waiting') return res.status(400).json({ error: 'Betting closed' });
-  // Reject bets with < 5 s left — not enough time for Phantom signing + tx confirmation
-  // before start_flying lands on-chain (devnet confirmations take 1–3 s).
-  if (game.countdown <= 5) return res.status(400).json({ error: 'Too late to bet — wait for next round' });
+  // Reject bets with < 3 s left — not enough time for Phantom signing + tx confirmation.
+  if (game.countdown <= 3) return res.status(400).json({ error: 'Too late to bet — wait for next round' });
 
   try {
     const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC } = global._solana;
@@ -302,12 +301,16 @@ app.post('/api/prepare-bet', async (req, res) => {
     const [housePDA]  = findHousePDA();
     const [vaultPDA]  = findVaultPDA();
 
-    // Read on-chain state: round_id for correct PDA seeds, phase to verify betting is open.
-    // game.roundId resets on server restart but house.round_id keeps incrementing,
-    // so always use the on-chain value or Anchor throws ConstraintSeeds (0x7d6).
-    const { roundId: onChainRoundId, phase: onChainPhase } = await getOnChainState();
-    if (onChainPhase !== 1) { // 1 = PHASE_BETTING — not ready yet, tell client to retry
-      return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
+    // Wait for start_round to confirm on-chain (lags 1–3 s behind server on devnet).
+    // Poll until BETTING is confirmed, abort if the window closes while waiting.
+    let onChainRoundId;
+    for (let i = 0; i < 10; i++) {
+      if (game.phase !== 'waiting' || game.countdown <= 3)
+        return res.status(400).json({ error: 'Betting window closed — wait for next round' });
+      const s = await getOnChainState();
+      if (s.phase === 1) { onChainRoundId = s.roundId; break; }  // 1 = PHASE_BETTING
+      if (i === 9) return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
+      await new Promise(r => setTimeout(r, 500));
     }
     const [betPDA]    = findBetPDA(playerPK, onChainRoundId);
 
@@ -368,8 +371,10 @@ app.post('/api/cashout', async (req, res) => {
     const [vaultPDA]   = findVaultPDA();
 
     // start_flying takes 1–3 s to confirm on devnet; wait for on-chain FLYING before submitting.
+    // Abort early if the game crashes on the server while we're waiting.
     let onChainRoundId;
     for (let i = 0; i < 10; i++) {
+      if (game.phase !== 'flying') throw new Error('Game ended before cashout could be submitted');
       const s = await getOnChainState();
       if (s.phase === 2) { onChainRoundId = s.roundId; break; }   // 2 = PHASE_FLYING
       if (i === 9) throw new Error('Timed out waiting for on-chain FLYING phase');
@@ -495,7 +500,7 @@ function startCountdown() {
   game.phase      = 'waiting';
   game.bets       = {};
   game.multiplier = 1.00;
-  game.countdown  = 15;
+  game.countdown  = 20;
   console.log(`[round ${game.roundId}] countdown started: ${game.countdown}s`);
   game.crashPoint = generateCrashPoint();
 
