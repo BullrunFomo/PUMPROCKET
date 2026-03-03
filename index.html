@@ -1579,8 +1579,18 @@ document.getElementById('betBtn').addEventListener('click', async () => {
         });
         body = await resp.json();
         if (body.retry) {
+          // After 4 failed on-chain attempts (~6 s) fall back to socket so the bet always lands
+          if (attempt >= 3) {
+            S.myBet   = amount;
+            S.balance = parseFloat((S.balance - amount).toFixed(6));
+            updateBalanceDisplay();
+            socket.emit('placeBet', { wallet: S.wallet, amount, autoCashOut: autoCO });
+            setStatus('✓ Bet placed!', 'success');
+            updateBetUI();
+            return;
+          }
           setStatus('Opening round on-chain… (' + (attempt + 1) + ')', 'info');
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 200));
           continue;
         }
         break;
