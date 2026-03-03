@@ -1024,9 +1024,9 @@
       <div class="crash-display" id="crashDisplay">
 
         <div id="countdownOverlay">
-          <div class="cd-label">Next Round In</div>
-          <div class="cd-num" id="cdNum">10</div>
-          <div class="cd-sub" id="cdSub">Place your bets now</div>
+          <div class="cd-label">BETTING</div>
+          <div class="cd-num" id="cdNum">20</div>
+          <div class="cd-sub" id="cdSub">20 seconds</div>
         </div>
 
         <canvas id="graphCanvas"></canvas>
@@ -1421,7 +1421,7 @@ socket.on('phase', (data) => {
 socket.on('countdown', (n) => {
   document.getElementById('cdNum').textContent = n;
   document.getElementById('cdSub').textContent =
-    n > 5 ? 'Place your bets now' : n > 2 ? 'Hurry up!' : 'Starting soon...';
+    n > 2 ? n + ' seconds' : 'Starting soon...';
 });
 
 socket.on('tick', ({ multiplier }) => {
@@ -1580,7 +1580,7 @@ document.getElementById('betBtn').addEventListener('click', async () => {
         body = await resp.json();
         if (body.retry) {
           setStatus('Opening round on-chain… (' + (attempt + 1) + ')', 'info');
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 500));
           continue;
         }
         break;
@@ -1741,6 +1741,7 @@ function showCountdown(n) {
   const ov = document.getElementById('countdownOverlay');
   ov.classList.remove('hidden');
   document.getElementById('cdNum').textContent = n;
+  document.getElementById('cdSub').textContent = n > 2 ? n + ' seconds' : 'Starting soon...';
 }
 function hideCountdown() {
   document.getElementById('countdownOverlay').classList.add('hidden');
