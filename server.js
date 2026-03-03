@@ -308,16 +308,12 @@ app.post('/api/prepare-bet', async (req, res) => {
     const [housePDA]  = findHousePDA();
     const [vaultPDA]  = findVaultPDA();
 
-    // Wait for start_round to confirm on-chain (lags 1–3 s behind server on devnet).
-    // Poll until BETTING is confirmed, abort if the window closes while waiting.
-    let onChainRoundId;
-    for (let i = 0; i < 10; i++) {
-      if (game.phase !== 'waiting' || game.countdown <= 3)
-        return res.status(400).json({ error: 'Betting window closed — wait for next round' });
-      const s = await getOnChainState();
-      if (s.phase === 1) { onChainRoundId = s.roundId; break; }  // 1 = PHASE_BETTING
-      if (i === 9) return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
-      await new Promise(r => setTimeout(r, 500));
+    // Single fast on-chain query — no polling. The client retries automatically.
+    // Avoids the 5-second blocking wait that caused the "stuck on Opening round" bug.
+    // Also uses the actual on-chain round_id (not game.roundId which resets on restart).
+    const { roundId: onChainRoundId, phase: onChainPhase } = await getOnChainState();
+    if (onChainPhase !== 1) { // 1 = PHASE_BETTING
+      return res.status(400).json({ retry: true, error: 'Round not open on-chain yet — try again in a moment' });
     }
     const [betPDA]    = findBetPDA(playerPK, onChainRoundId);
 
@@ -520,8 +516,16 @@ function startCountdown() {
   if (solanaEnabled && global._solana) {
     console.log(`[on-chain] start_round queued for round ${game.roundId}`);
     (async () => {
-      try { await global._solana.onChainStartRound(game.roundId, game._commitment); }
-      catch (e) { console.error('[on-chain] start_round IIFE error:', e.message); }
+      try {
+        await global._solana.onChainStartRound(game.roundId, game._commitment);
+        // After start_round confirms, sync game.roundId to the real on-chain value.
+        // Server restarts reset game.roundId to 1; this corrects any mismatch.
+        const { roundId: ocId } = await global._solana.getOnChainState();
+        if (ocId !== game.roundId) {
+          console.warn(`[sync] game.roundId corrected: ${game.roundId} → ${ocId}`);
+          game.roundId = ocId;
+        }
+      } catch (e) { console.error('[on-chain] start_round IIFE error:', e.message); }
     })();
   }
 
@@ -860,6 +864,15 @@ async function recoverOnChainState() {
         await global._solana.onChainSettleCrash(saved.roundId, saved.crashBps, saved.salt);
         console.log('[recovery] Recovered from BETTING phase');
       }
+    }
+
+    // Sync game.roundId so betPDA uses the correct on-chain round after restart.
+    // start_round increments house.round_id by 1, so next round = current + 1.
+    const finalState = await getOnChainState();
+    const nextRound = finalState.roundId + 1;
+    if (game.roundId !== nextRound) {
+      console.log(`[recovery] Syncing game.roundId: ${game.roundId} → ${nextRound} (on-chain is ${finalState.roundId})`);
+      game.roundId = nextRound;
     }
   } catch (e) {
     console.error('[recovery] Failed:', e.message);
