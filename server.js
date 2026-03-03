@@ -308,11 +308,16 @@ app.post('/api/prepare-bet', async (req, res) => {
     const [housePDA]  = findHousePDA();
     const [vaultPDA]  = findVaultPDA();
 
-    // Single on-chain query to get the actual current round_id.
-    // Using game.roundId would be wrong after server restarts (Railway redeploys reset it to 1).
-    const { roundId: onChainRoundId, phase: onChainPhase } = await getOnChainState();
-    if (onChainPhase !== 1) { // 1 = PHASE_BETTING
-      return res.status(400).json({ retry: true, error: 'Round not open on-chain yet — wait a moment and try again' });
+    // Wait for start_round to confirm on-chain (lags 1–3 s behind server on devnet).
+    // Poll until BETTING is confirmed, abort if the window closes while waiting.
+    let onChainRoundId;
+    for (let i = 0; i < 10; i++) {
+      if (game.phase !== 'waiting' || game.countdown <= 3)
+        return res.status(400).json({ error: 'Betting window closed — wait for next round' });
+      const s = await getOnChainState();
+      if (s.phase === 1) { onChainRoundId = s.roundId; break; }  // 1 = PHASE_BETTING
+      if (i === 9) return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
+      await new Promise(r => setTimeout(r, 500));
     }
     const [betPDA]    = findBetPDA(playerPK, onChainRoundId);
 
@@ -515,16 +520,8 @@ function startCountdown() {
   if (solanaEnabled && global._solana) {
     console.log(`[on-chain] start_round queued for round ${game.roundId}`);
     (async () => {
-      try {
-        await global._solana.onChainStartRound(game.roundId, game._commitment);
-        // After confirmation, sync game.roundId to the actual on-chain value.
-        // This handles cases where game.roundId drifted (e.g. partial recovery).
-        const { roundId: ocId } = await global._solana.getOnChainState();
-        if (ocId !== game.roundId) {
-          console.warn(`[sync] game.roundId corrected: ${game.roundId} → ${ocId}`);
-          game.roundId = ocId;
-        }
-      } catch (e) { console.error('[on-chain] start_round IIFE error:', e.message); }
+      try { await global._solana.onChainStartRound(game.roundId, game._commitment); }
+      catch (e) { console.error('[on-chain] start_round IIFE error:', e.message); }
     })();
   }
 
@@ -863,17 +860,6 @@ async function recoverOnChainState() {
         await global._solana.onChainSettleCrash(saved.roundId, saved.crashBps, saved.salt);
         console.log('[recovery] Recovered from BETTING phase');
       }
-    }
-
-    // Sync game.roundId to what the next start_round will produce on-chain.
-    // start_round increments house.round_id by 1, so the next round = current + 1.
-    // Without this, server restarts (Railway deploys) would reset game.roundId = 1
-    // while on-chain is at e.g. round 50, causing wrong betPDA and tx failures.
-    const finalState = await getOnChainState();
-    const nextRoundId = finalState.roundId + 1;
-    if (game.roundId !== nextRoundId) {
-      console.log(`[recovery] Syncing game.roundId: ${game.roundId} → ${nextRoundId} (on-chain was ${finalState.roundId})`);
-      game.roundId = nextRoundId;
     }
   } catch (e) {
     console.error('[recovery] Failed:', e.message);
