@@ -1567,10 +1567,14 @@ document.getElementById('betBtn').addEventListener('click', async () => {
   if (S.programInfo?.enabled && S.walletType === 'phantom' && SOL) {
     // Phantom: on-chain only — no off-chain fallback
     const phantom = window.phantom?.solana || window.solana;
+    setStatus('Building transaction…', 'info');
     let resp, body;
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       if (S.phase !== 'waiting') return setStatus('Betting window closed', 'error');
-      setStatus(attempt === 0 ? 'Building transaction…' : 'Opening round on-chain… (' + attempt + ')', 'info');
+      if (attempt > 0) {
+        setStatus('Round starting… retrying', 'info');
+        await new Promise(r => setTimeout(r, 1500));
+      }
       try {
         resp = await fetch('/api/prepare-bet', {
           method: 'POST',
@@ -1579,11 +1583,9 @@ document.getElementById('betBtn').addEventListener('click', async () => {
         });
         body = await resp.json();
       } catch (e) { return setStatus('Network error — try again', 'error'); }
-      if (!body.retry) break;
-      await new Promise(r => setTimeout(r, 300));
+      if (!body?.retry) break;
     }
-    if (body?.retry) return setStatus('Round not ready — try next round', 'error');
-    if (!resp.ok)    return setStatus(body?.error || 'Failed to prepare bet', 'error');
+    if (!resp.ok) return setStatus(body?.error || 'Failed to prepare bet', 'error');
 
     try {
       setStatus('Approve in Phantom…', 'info');
