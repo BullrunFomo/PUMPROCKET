@@ -939,7 +939,6 @@
         </svg>
         <span class="hb-val" id="headerBalanceVal">0.0000</span>
       </div>
-      <button id="demoBtn" style="font-family:'Inter',sans-serif;font-size:0.72rem;font-weight:700;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--muted);cursor:pointer;transition:all 0.15s;white-space:nowrap;" onmouseover="this.style.color='var(--text)';this.style.borderColor='rgba(255,255,255,0.2)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">Demo</button>
       <button class="wallet-pill" id="connectWallet">
         <div class="wallet-pill-avatar" id="headerProfileAvatar" style="display:none"></div>
         <span id="walletPillLabel">Connect Wallet</span>
@@ -1497,19 +1496,6 @@ socket.on('playerCashedOut', ({ wallet, multiplier }) => {
 });
 
 // ─── Wallet Connect ──────────────────────────────────────────────────────────
-document.getElementById('demoBtn').addEventListener('click', () => {
-  if (S.wallet) return;
-  useDemoWallet();
-  const btn = document.getElementById('connectWallet');
-  btn.classList.add('connected');
-  document.getElementById('walletPillLabel').textContent = S.wallet.slice(0, 6) + '…';
-  document.getElementById('headerBalanceWrap').style.display = 'flex';
-  document.getElementById('headerBalanceVal').textContent = S.balance.toFixed(4);
-  document.getElementById('betBtn').disabled = false;
-  document.getElementById('demoBtn').style.display = 'none';
-  updateChainBadge();
-});
-
 document.getElementById('connectWallet').addEventListener('click', async () => {
   const btn = document.getElementById('connectWallet');
 
@@ -1540,7 +1526,6 @@ document.getElementById('connectWallet').addEventListener('click', async () => {
     const short = S.wallet.slice(0, 4) + '…' + S.wallet.slice(-4);
     document.getElementById('walletPillLabel').textContent = short;
     btn.classList.add('connected');
-    document.getElementById('demoBtn').style.display = 'none';
     document.getElementById('headerProfileAvatar').style.display = 'flex';
     updateBalanceDisplay();
     updateChainBadge();
@@ -1863,7 +1848,6 @@ document.getElementById('disconnectWalletBtn').addEventListener('click', () => {
   document.getElementById('betBtn').disabled = true;
   document.getElementById('betBtn').textContent = 'Cashout';
   document.getElementById('profileModalOverlay').classList.add('hidden');
-  document.getElementById('demoBtn').style.display = '';
   updateChainBadge();
 });
 
