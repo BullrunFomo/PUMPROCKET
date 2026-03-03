@@ -123,6 +123,13 @@ try {
   async function onChainStartRound(roundId, commitment) {
     if (!solanaEnabled) return;
     try {
+      // Wait for settle_crash/force_crash from the previous round to confirm before submitting
+      // start_round. On devnet, settlement takes 1–5 s; submitting too early causes InvalidPhase.
+      for (let i = 0; i < 15; i++) {
+        const { phase } = await getOnChainState();
+        if (phase === 0 || phase === 3) break; // WAITING or CRASHED — safe to start new round
+        await new Promise(r => setTimeout(r, 600));
+      }
       const [housePDA] = findHousePDA();
       const sig = await sendWithRetry(() => {
         const data = Buffer.alloc(8 + 32);
