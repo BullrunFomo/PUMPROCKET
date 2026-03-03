@@ -379,6 +379,9 @@ app.post('/api/cashout', async (req, res) => {
   // Respond to client immediately
   res.json({ multiplier: snapMultiplier, payout: bet.payout });
 
+  // Broadcast to all clients so player lists update (mirrors the socket cashOut path)
+  io.emit('playerCashedOut', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), multiplier: snapMultiplier });
+
   // Settle on-chain in background (non-blocking)
   if (global._solana) {
     const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC, sendWithRetry, authority } = global._solana;
