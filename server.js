@@ -347,7 +347,7 @@ app.post('/api/prepare-bet', async (req, res) => {
     tx.feePayer = playerPK;
 
     const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    res.json({ transaction: serialized.toString('base64'), blockhash: bh.blockhash });
+    res.json({ transaction: serialized.toString('base64'), blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -363,63 +363,63 @@ app.post('/api/cashout', async (req, res) => {
   if (!bet) return res.status(400).json({ error: 'No active bet' });
   if (bet.cashedOut) return res.status(400).json({ error: 'Already cashed out' });
 
-  // Optimistic lock: mark immediately to prevent duplicate concurrent requests.
-  // We snapshot the multiplier now — it won't drift while the tx confirms.
+  // Lock and finalize payout immediately — don't block on on-chain confirmation.
+  // Responding fast is critical: crash points like 1.1× only give ~1 second of flying time.
   bet.cashedOut = true;
   const snapMultiplier    = game.multiplier;
   const snapMultiplierBps = Math.floor(snapMultiplier * 100);
 
-  try {
+  bet.cashOutAt = snapMultiplier;
+  const gross   = bet.amount * snapMultiplier;
+  const fee     = parseFloat((gross * CASHOUT_FEE).toFixed(6));
+  bet.payout    = parseFloat((gross - fee).toFixed(6));
+  totalFeesCollected += fee;
+  console.log(`[fees] +${fee.toFixed(4)} SOL → ${FEE_WALLET} (total: ${totalFeesCollected.toFixed(4)} SOL)`);
+
+  // Respond to client immediately
+  res.json({ multiplier: snapMultiplier, payout: bet.payout });
+
+  // Settle on-chain in background (non-blocking)
+  if (global._solana) {
     const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC, sendWithRetry, authority } = global._solana;
     const { PublicKey, TransactionInstruction, SystemProgram } = web3;
+    (async () => {
+      try {
+        const playerPK   = new PublicKey(wallet);
+        const [housePDA] = findHousePDA();
+        const [vaultPDA] = findVaultPDA();
 
-    const playerPK     = new PublicKey(wallet);
-    const [housePDA]   = findHousePDA();
-    const [vaultPDA]   = findVaultPDA();
+        // Wait for on-chain FLYING phase (up to 8 s)
+        let onChainRoundId;
+        for (let i = 0; i < 16; i++) {
+          const s = await getOnChainState();
+          if (s.phase === 2) { onChainRoundId = s.roundId; break; }
+          if (i === 15) { console.error('[cashout bg] Timed out waiting for FLYING'); return; }
+          await new Promise(r => setTimeout(r, 500));
+        }
 
-    // start_flying takes 1–3 s to confirm on devnet; wait for on-chain FLYING before submitting.
-    // Abort early if the game crashes on the server while we're waiting.
-    let onChainRoundId;
-    for (let i = 0; i < 10; i++) {
-      if (game.phase !== 'flying') throw new Error('Game ended before cashout could be submitted');
-      const s = await getOnChainState();
-      if (s.phase === 2) { onChainRoundId = s.roundId; break; }   // 2 = PHASE_FLYING
-      if (i === 9) throw new Error('Timed out waiting for on-chain FLYING phase');
-      await new Promise(r => setTimeout(r, 500));
-    }
+        const [betPDA] = findBetPDA(playerPK, onChainRoundId);
+        const data = Buffer.alloc(8 + 4);
+        DISC.cash_out.copy(data, 0);
+        data.writeUInt32LE(snapMultiplierBps, 8);
 
-    const [betPDA]     = findBetPDA(playerPK, onChainRoundId);
-
-    const data = Buffer.alloc(8 + 4);
-    DISC.cash_out.copy(data, 0);
-    data.writeUInt32LE(snapMultiplierBps, 8);
-
-    const sig = await sendWithRetry(() => new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA,                isSigner: false, isWritable: true  },
-        { pubkey: betPDA,                  isSigner: false, isWritable: true  },
-        { pubkey: vaultPDA,                isSigner: false, isWritable: true  },
-        { pubkey: playerPK,                isSigner: false, isWritable: true  },
-        { pubkey: authority.publicKey,     isSigner: true,  isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data,
-    }), [authority], 'cash_out');
-
-    // Finalize in-memory state using the snapshotted multiplier
-    bet.cashOutAt = snapMultiplier;
-    const gross   = bet.amount * snapMultiplier;
-    const fee     = parseFloat((gross * CASHOUT_FEE).toFixed(6));
-    bet.payout    = parseFloat((gross - fee).toFixed(6));
-    totalFeesCollected += fee;
-    console.log(`[fees] +${fee.toFixed(4)} SOL → ${FEE_WALLET} (total: ${totalFeesCollected.toFixed(4)} SOL)`);
-
-    res.json({ signature: sig, multiplier: snapMultiplier, payout: bet.payout });
-  } catch (e) {
-    // Release the lock so the player can retry (unless it's already on-chain)
-    bet.cashedOut = false;
-    res.status(500).json({ error: e.message });
+        const sig = await sendWithRetry(() => new TransactionInstruction({
+          keys: [
+            { pubkey: housePDA,                isSigner: false, isWritable: true  },
+            { pubkey: betPDA,                  isSigner: false, isWritable: true  },
+            { pubkey: vaultPDA,                isSigner: false, isWritable: true  },
+            { pubkey: playerPK,                isSigner: false, isWritable: true  },
+            { pubkey: authority.publicKey,     isSigner: true,  isWritable: false },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+          programId: PROGRAM_ID_PK,
+          data,
+        }), [authority], 'cash_out');
+        console.log(`[cashout bg] on-chain settled @ ${snapMultiplier}×: ${sig}`);
+      } catch (e) {
+        console.error('[cashout bg] on-chain settlement failed:', e.message);
+      }
+    })();
   }
 });
 

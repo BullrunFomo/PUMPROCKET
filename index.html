@@ -1587,17 +1587,29 @@ document.getElementById('betBtn').addEventListener('click', async () => {
       }
       if (body.retry) return setStatus('Round not ready — please try again', 'error');
       if (!resp.ok) return setStatus(body.error || 'Failed to prepare bet', 'error');
-      const { transaction } = body;
+      const { transaction, blockhash, lastValidBlockHeight } = body;
       const txBytes = Uint8Array.from(atob(transaction), c => c.charCodeAt(0));
       const tx      = SOL.Transaction.from(txBytes);
       const signed  = await phantom.signTransaction(tx);
-      const txid    = await S.connection.sendRawTransaction(signed.serialize());
-      await S.connection.confirmTransaction(txid);
-      setStatus('✓ On-chain bet confirmed!', 'success');
+      setStatus('Sending transaction…', 'info');
+      const txid = await S.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+
+      // Register the bet immediately — don't block on on-chain confirmation.
+      // sendRawTransaction returning a txid means the validator accepted the tx.
       S.myBet   = amount;
-      S.balance = await getSolBalance(S.wallet);
+      S.balance = parseFloat((S.balance - amount).toFixed(6));
       updateBalanceDisplay();
       socket.emit('placeBet', { wallet: S.wallet, amount, autoCashOut: autoCO });
+      setStatus('✓ Bet placed! Confirming on-chain…', 'info');
+
+      // Confirm in background
+      const confirmOpts = (blockhash && lastValidBlockHeight)
+        ? { signature: txid, blockhash, lastValidBlockHeight }
+        : txid;
+      S.connection.confirmTransaction(confirmOpts)
+        .then(() => { setStatus('✓ On-chain bet confirmed!', 'success'); return getSolBalance(S.wallet); })
+        .then(bal => { S.balance = bal; updateBalanceDisplay(); })
+        .catch(e => console.warn('[bet] on-chain confirmation:', e.message));
       return;
     } catch (e) { setStatus('On-chain bet failed: ' + e.message, 'error'); return; }
   }
