@@ -83,7 +83,7 @@ try {
         if (st.err) throw new Error(`Tx rejected: ${JSON.stringify(st.err)}`);
         if (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized') return;
       }
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 400));
     }
     throw new Error(`Tx not confirmed within ${timeoutMs / 1000}s`);
   }
