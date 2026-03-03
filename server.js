@@ -311,13 +311,13 @@ app.post('/api/prepare-bet', async (req, res) => {
     // Wait for start_round to confirm on-chain (lags 1–3 s behind server on devnet).
     // Poll until BETTING is confirmed, abort if the window closes while waiting.
     let onChainRoundId;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 10; i++) {
       if (game.phase !== 'waiting' || game.countdown <= 3)
         return res.status(400).json({ error: 'Betting window closed — wait for next round' });
       const s = await getOnChainState();
       if (s.phase === 1) { onChainRoundId = s.roundId; break; }  // 1 = PHASE_BETTING
-      if (i === 3) return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
-      await new Promise(r => setTimeout(r, 350));
+      if (i === 9) return res.status(202).json({ retry: true, message: 'Round opening on-chain…' });
+      await new Promise(r => setTimeout(r, 500));
     }
     const [betPDA]    = findBetPDA(playerPK, onChainRoundId);
 
