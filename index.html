@@ -553,7 +553,7 @@
       0%,100% { background: rgba(0,228,162,0.1); }
       50%      { background: rgba(0,228,162,0.18); }
     }
-    .ps-cashed  { color: var(--accent); background: rgba(0,228,162,0.08); border: 1px solid rgba(0,228,162,0.15); }
+    .ps-cashed  { color: #ffd600; background: rgba(255,214,0,0.08); border: 1px solid rgba(255,214,0,0.25); }
     .ps-lost    { color: var(--accent2); background: rgba(255,59,107,0.08); border: 1px solid rgba(255,59,107,0.18); }
 
     /* ─── Game Panel ─── */
@@ -1186,7 +1186,7 @@ function renderPlayers() {
     }
     let statusHtml = '';
     if (p.status === 'playing') statusHtml = `<span class="player-status ps-playing">IN PLAY</span>`;
-    else if (p.status === 'cashed') statusHtml = `<span class="player-status ps-cashed">✓ ${p.mult ? p.mult.toFixed(2) + '×' : 'OUT'}</span>`;
+    else if (p.status === 'cashed') statusHtml = `<span class="player-status ps-cashed">OUT</span>`;
     else statusHtml = `<span class="player-status ps-lost">BUST</span>`;
     row.innerHTML = `
       ${avatarHtml}
