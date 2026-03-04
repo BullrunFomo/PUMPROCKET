@@ -9,7 +9,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.91.1/lib/index.iife.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -922,6 +921,120 @@
       margin: 0; font-size: 0.84rem; color: rgba(255,255,255,0.75); line-height: 1.55;
     }
     .token-tokenomics strong { color: var(--accent); }
+
+    /* ─── Account Modal ─── */
+    .account-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(8px);
+      z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .account-modal-overlay.hidden { display: none; }
+    .account-modal {
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 360px;
+      overflow: hidden;
+      box-shadow: 0 24px 72px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,228,162,0.05);
+      animation: modalIn 0.18s ease;
+    }
+    .account-modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.3);
+    }
+    .account-modal-title {
+      font-size: 0.67rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--text);
+    }
+    .account-modal-close {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; color: var(--muted);
+      font-size: 0.7rem; width: 22px; height: 22px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; font-family: 'Inter', sans-serif;
+    }
+    .account-modal-close:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+    .account-modal-body { padding: 20px 18px; display: flex; flex-direction: column; gap: 18px; }
+    .account-balance-block {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,228,162,0.06);
+      border: 1px solid rgba(0,228,162,0.15);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .account-balance-label {
+      font-size: 0.62rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted);
+    }
+    .account-balance-val {
+      font-size: 1.2rem; font-weight: 800;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .account-section-title {
+      font-size: 0.6rem; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .deposit-address-box {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .deposit-address-text {
+      flex: 1; font-size: 0.72rem; font-weight: 500;
+      color: var(--text); font-family: monospace;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .copy-btn {
+      font-family: 'Inter', sans-serif; font-size: 0.62rem; font-weight: 700;
+      padding: 4px 10px; border-radius: 6px;
+      background: rgba(0,228,162,0.1); border: 1px solid rgba(0,228,162,0.22);
+      color: var(--accent); cursor: pointer; white-space: nowrap;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .copy-btn:hover { background: rgba(0,228,162,0.2); }
+    .deposit-hint {
+      font-size: 0.62rem; color: var(--muted); margin-top: 6px; line-height: 1.5;
+    }
+    .withdraw-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .withdraw-input {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.84rem; font-weight: 500;
+      padding: 9px 12px; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .withdraw-input::placeholder { color: var(--muted); font-weight: 400; }
+    .withdraw-input:focus { border-color: rgba(0,228,162,0.45); box-shadow: 0 0 0 3px rgba(0,228,162,0.08); }
+    .withdraw-input[type=number]::-webkit-outer-spin-button,
+    .withdraw-input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .withdraw-input[type=number] { -moz-appearance: textfield; }
+    .withdraw-btn {
+      font-family: 'Inter', sans-serif; font-size: 0.72rem; font-weight: 700;
+      padding: 9px 14px; border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #00E4A2 0%, #00c48e 100%);
+      color: #060f09; cursor: pointer; white-space: nowrap;
+      transition: all 0.2s; box-shadow: 0 2px 10px rgba(0,228,162,0.2);
+    }
+    .withdraw-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(0,228,162,0.4); }
+    .withdraw-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+    #withdrawStatus { font-size: 0.67rem; font-weight: 500; min-height: 1em; }
+    #withdrawStatus.success { color: var(--green); }
+    #withdrawStatus.error   { color: var(--accent2); }
+    #withdrawStatus.info    { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -931,7 +1044,7 @@
     <div class="logo"><span class="logo-pump">PUMP</span><span class="logo-rocket">ROCKET</span></div>
     <nav class="game-nav"></nav>
     <div class="header-right">
-      <div class="header-balance" id="headerBalanceWrap" style="display:none">
+      <div class="header-balance" id="headerBalanceWrap" style="display:none" title="Deposit / Withdraw">
         <svg class="sol-logo" width="16" height="13" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M1 8.5H10.5L13 10.5H3.5L1 8.5Z" fill="#00E4A2"/>
           <path d="M1 4.5H10.5L13 6.5H3.5L1 4.5Z" fill="#00E4A2"/>
@@ -993,10 +1106,7 @@
           <input type="number" id="autoCashOut" placeholder="0.00" min="1.01" step="0.1" />
         </div>
 
-        <div id="chainBadge" class="chain-badge off">Off-chain mode</div>
-
-        <button class="schedule-btn" id="scheduleBtn" disabled>Schedule Bet For Next Round</button>
-        <button id="betBtn" disabled>Cashout</button>
+        <button id="betBtn" disabled>Place Bet</button>
         <button id="cashOutBtn">💸 Cashout</button>
         <div id="betStatus"></div>
       </div>
@@ -1083,6 +1193,45 @@
 
 </div>
 
+<!-- Account Modal (Deposit / Withdraw) -->
+<div class="account-modal-overlay hidden" id="accountModalOverlay">
+  <div class="account-modal">
+    <div class="account-modal-header">
+      <span class="account-modal-title">My Account</span>
+      <button class="account-modal-close" id="accountModalClose">✕</button>
+    </div>
+    <div class="account-modal-body">
+
+      <!-- Balance -->
+      <div class="account-balance-block">
+        <span class="account-balance-label">Balance</span>
+        <span class="account-balance-val"><span id="accountBalanceVal">0.0000</span> SOL</span>
+      </div>
+
+      <!-- Deposit -->
+      <div>
+        <div class="account-section-title">Deposit</div>
+        <div class="deposit-address-box">
+          <span class="deposit-address-text" id="depositAddressText">Loading…</span>
+          <button class="copy-btn" id="copyDepositBtn">Copy</button>
+        </div>
+        <div class="deposit-hint">Send SOL to this address from any wallet. Your balance updates automatically within ~10 seconds. Min deposit: 0.001 SOL.</div>
+      </div>
+
+      <!-- Withdraw -->
+      <div>
+        <div class="account-section-title">Withdraw</div>
+        <div class="withdraw-row">
+          <input type="number" class="withdraw-input" id="withdrawAmount" placeholder="Amount in SOL" min="0.01" step="0.01" />
+          <button class="withdraw-btn" id="withdrawBtn">Withdraw</button>
+        </div>
+        <div style="margin-top:7px"><div id="withdrawStatus"></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Profile Modal -->
 <div class="profile-modal-overlay hidden" id="profileModalOverlay">
   <div class="profile-modal">
@@ -1113,18 +1262,15 @@
 <script>
 // ─── App State ───────────────────────────────────────────────────────────────
 const S = {
-  wallet:       null,
-  walletType:   null,  // 'phantom' | 'demo'
-  balance:      0,
-  phase:        'waiting',
-  multiplier:   1.00,
-  myBet:        null,
-  myCashedOut:  false,
-  cashOutMult:  null,
-  roundId:      1,
-  graphPoints:  [],
-  programInfo:  null,
-  connection:   null,
+  wallet:      null,
+  balance:     0,   // in SOL (synced from server via balanceUpdate)
+  phase:       'waiting',
+  multiplier:  1.00,
+  myBet:       null,
+  myCashedOut: false,
+  cashOutMult: null,
+  roundId:     1,
+  graphPoints: [],
 };
 
 // ─── Profile State ───────────────────────────────────────────────────────────
@@ -1244,42 +1390,8 @@ function sendChat() {
   input.value = '';
 }
 
-// ─── Solana helpers ──────────────────────────────────────────────────────────
-const SOL = window.solanaWeb3;
+// ─── SOL SVG icon ────────────────────────────────────────────────────────────
 const SOL_SVG = `<svg width="13" height="10" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-right:3px;flex-shrink:0"><path d="M1 8.5H10.5L13 10.5H3.5L1 8.5Z" fill="currentColor"/><path d="M1 4.5H10.5L13 6.5H3.5L1 4.5Z" fill="currentColor"/><path d="M13 2.5H3.5L1 0.5H10.5L13 2.5Z" fill="currentColor"/></svg>`;
-
-async function fetchProgramInfo() {
-  try {
-    const r = await fetch('/api/program');
-    if (r.ok) { S.programInfo = await r.json(); updateChainBadge(); }
-  } catch {}
-}
-
-function updateChainBadge() {
-  const el = document.getElementById('chainBadge');
-  if (S.programInfo?.enabled && S.walletType === 'phantom') {
-    el.className = 'chain-badge';
-    el.innerHTML = SOL_SVG + 'On-chain';
-  } else if (S.walletType === 'demo') {
-    el.className = 'chain-badge off';
-    el.innerHTML = SOL_SVG + 'Demo mode (off-chain)';
-  } else {
-    el.className = 'chain-badge off';
-    el.innerHTML = SOL_SVG + 'Off-chain mode';
-  }
-}
-
-async function getSolBalance(pubkeyStr) {
-  try {
-    if (!S.connection) {
-      const rpc = S.programInfo?.rpc || 'https://api.devnet.solana.com';
-      S.connection = new SOL.Connection(rpc, 'confirmed');
-    }
-    const pk = new SOL.PublicKey(pubkeyStr);
-    const lamports = await S.connection.getBalance(pk);
-    return lamports / SOL.LAMPORTS_PER_SOL;
-  } catch { return 0; }
-}
 
 // ─── Canvas ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('graphCanvas');
@@ -1455,10 +1567,14 @@ socket.on('crashed', ({ crashPoint, history }) => {
 
   if (S.myBet && !S.myCashedOut) {
     setStatus(`💥 Crashed @ ${crashPoint}× — Lost ${S.myBet.toFixed(4)} SOL`, 'error');
-    S.balance = Math.max(0, S.balance - S.myBet);
-    updateBalanceDisplay();
+    // Balance was already debited server-side when the bet was placed
   }
   updateBetUI();
+});
+
+socket.on('balanceUpdate', ({ balance_lamports }) => {
+  S.balance = balance_lamports / 1e9;
+  updateBalanceDisplay();
 });
 
 socket.on('betConfirmed', ({ amount }) => {
@@ -1474,14 +1590,11 @@ socket.on('cashOutError',(msg) => setStatus(msg, 'error'));
 socket.on('cashedOut', ({ multiplier, payout, amount }) => {
   S.myCashedOut = true;
   S.cashOutMult = multiplier;
-  const profit = payout - amount;
-  S.balance += profit;
-  updateBalanceDisplay();
+  // Balance updated via balanceUpdate event from server
   setStatus(`🎉 Cashed out @ ${multiplier}× — +${payout.toFixed ? payout.toFixed(4) : payout} SOL`, 'success');
   setMultiplierUI(multiplier, 'cashed');
   updateBetUI();
   hidePayout();
-  // playerCashedOut broadcast handles updating playersMap for everyone including ourselves
 });
 
 socket.on('betPlaced', ({ wallet, amount }) => {
@@ -1508,32 +1621,29 @@ document.getElementById('connectWallet').addEventListener('click', async () => {
   }
 
   const phantom = window.phantom?.solana || window.solana;
-  if (phantom?.isPhantom) {
-    try {
-      const resp = await phantom.connect();
-      S.wallet     = resp.publicKey.toString();
-      S.walletType = 'phantom';
-      S.balance    = await getSolBalance(S.wallet);
-    } catch (err) {
-      setStatus('Wallet connection rejected', 'error');
-      return;
-    }
-  } else {
-    useDemoWallet();
+  if (!phantom?.isPhantom) {
+    setStatus('Phantom wallet not found. Install it at phantom.app', 'error');
+    return;
   }
 
-  if (S.wallet) {
-    const short = S.wallet.slice(0, 4) + '…' + S.wallet.slice(-4);
-    document.getElementById('walletPillLabel').textContent = short;
-    btn.classList.add('connected');
-    document.getElementById('headerProfileAvatar').style.display = 'flex';
-    updateBalanceDisplay();
-    updateChainBadge();
-    updateBetUI();
-    applyProfile();
-    fetchProfileFromServer(S.wallet);
-    socket.emit('register', { wallet: S.wallet });
+  try {
+    const resp = await phantom.connect();
+    S.wallet  = resp.publicKey.toString();
+    S.balance = 0; // will be updated by balanceUpdate event after register
+  } catch {
+    setStatus('Wallet connection rejected', 'error');
+    return;
   }
+
+  const short = S.wallet.slice(0, 4) + '…' + S.wallet.slice(-4);
+  document.getElementById('walletPillLabel').textContent = short;
+  btn.classList.add('connected');
+  document.getElementById('headerProfileAvatar').style.display = 'flex';
+  updateBalanceDisplay();
+  updateBetUI();
+  applyProfile();
+  fetchProfileFromServer(S.wallet);
+  socket.emit('register', { wallet: S.wallet });
 });
 
 async function fetchProfileFromServer(wallet) {
@@ -1547,100 +1657,20 @@ async function fetchProfileFromServer(wallet) {
   } catch {}
 }
 
-function useDemoWallet() {
-  const rand   = Math.random().toString(36).slice(2, 8).toUpperCase();
-  S.wallet     = 'Demo' + rand + '1111';
-  S.walletType = 'demo';
-  S.balance    = 100.0;
-  setStatus('Phantom not found — using demo wallet', 'info');
-}
-
 // ─── Place Bet ───────────────────────────────────────────────────────────────
-document.getElementById('betBtn').addEventListener('click', async () => {
+document.getElementById('betBtn').addEventListener('click', () => {
   if (!S.wallet) return setStatus('Connect your wallet first', 'error');
   const amount = parseFloat(document.getElementById('betAmount').value);
   if (!amount || isNaN(amount) || amount <= 0) return setStatus('Enter a valid bet amount', 'error');
-  if (amount > S.balance) return setStatus('Insufficient balance', 'error');
+  if (amount > S.balance) return setStatus('Insufficient balance. Click your balance to deposit.', 'error');
   if (S.phase !== 'waiting') return setStatus('Wait for the next round', 'error');
   const autoCO = parseFloat(document.getElementById('autoCashOut').value) || null;
-
-  if (S.programInfo?.enabled && S.walletType === 'phantom' && SOL) {
-    const phantom = window.phantom?.solana || window.solana;
-    setStatus('Building transaction…', 'info');
-    try {
-      // Retry while on-chain round is still opening (server returns retry:true / 202)
-      let resp, body;
-      for (let attempt = 0; attempt < 15; attempt++) {
-        if (S.phase !== 'waiting') return setStatus('Round already started', 'error');
-        resp = await fetch('/api/prepare-bet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: S.wallet, amount, autoCashout: autoCO }),
-        });
-        body = await resp.json();
-        if (body.retry) {
-          setStatus('Opening round on-chain… (' + (attempt + 1) + ')', 'info');
-          await new Promise(r => setTimeout(r, 500));
-          continue;
-        }
-        break;
-      }
-      if (body.retry) return setStatus('Round not ready — please try again', 'error');
-      if (!resp.ok) return setStatus(body.error || 'Failed to prepare bet', 'error');
-      const { transaction, blockhash, lastValidBlockHeight } = body;
-      const txBytes = Uint8Array.from(atob(transaction), c => c.charCodeAt(0));
-      const tx      = SOL.Transaction.from(txBytes);
-      const signed  = await phantom.signTransaction(tx);
-      setStatus('Sending transaction…', 'info');
-      const txid = await S.connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-
-      // Register the bet immediately — don't block on on-chain confirmation.
-      // sendRawTransaction returning a txid means the validator accepted the tx.
-      S.myBet   = amount;
-      S.balance = parseFloat((S.balance - amount).toFixed(6));
-      updateBalanceDisplay();
-      socket.emit('placeBet', { wallet: S.wallet, amount, autoCashOut: autoCO });
-      setStatus('✓ Bet placed! Confirming on-chain…', 'info');
-
-      // Confirm in background
-      const confirmOpts = (blockhash && lastValidBlockHeight)
-        ? { signature: txid, blockhash, lastValidBlockHeight }
-        : txid;
-      S.connection.confirmTransaction(confirmOpts)
-        .then(() => { setStatus('✓ On-chain bet confirmed!', 'success'); return getSolBalance(S.wallet); })
-        .then(bal => { S.balance = bal; updateBalanceDisplay(); })
-        .catch(e => console.warn('[bet] on-chain confirmation:', e.message));
-      return;
-    } catch (e) { setStatus('On-chain bet failed: ' + e.message, 'error'); return; }
-  }
-
   socket.emit('placeBet', { wallet: S.wallet, amount, autoCashOut: autoCO });
 });
 
 // ─── Cash Out ────────────────────────────────────────────────────────────────
-document.getElementById('cashOutBtn').addEventListener('click', async () => {
+document.getElementById('cashOutBtn').addEventListener('click', () => {
   if (!S.wallet || !S.myBet || S.myCashedOut) return;
-
-  if (S.programInfo?.enabled && S.walletType === 'phantom') {
-    setStatus('Submitting cashout…', 'info');
-    try {
-      const resp = await fetch('/api/cashout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: S.wallet }),
-      });
-      if (!resp.ok) { const err = await resp.json(); return setStatus(err.error || 'Cashout failed', 'error'); }
-      const { multiplier, payout } = await resp.json();
-      S.myCashedOut = true; S.cashOutMult = multiplier;
-      S.balance += payout - S.myBet;
-      updateBalanceDisplay();
-      setStatus(`🎉 Cashed out @ ${multiplier.toFixed(2)}× on-chain!`, 'success');
-      setMultiplierUI(multiplier, 'cashed');
-      updateBetUI();
-      return;
-    } catch (e) { setStatus('Cashout error: ' + e.message, 'error'); return; }
-  }
-
   socket.emit('cashOut', { wallet: S.wallet });
 });
 
@@ -1764,6 +1794,8 @@ function updateRoundBadge(id) {
 function updateBalanceDisplay() {
   document.getElementById('headerBalanceWrap').style.display = S.wallet ? 'flex' : 'none';
   document.getElementById('headerBalanceVal').textContent = S.balance.toFixed(4);
+  const accountVal = document.getElementById('accountBalanceVal');
+  if (accountVal) accountVal.textContent = S.balance.toFixed(4);
   updateBetUsd();
 }
 function setStatus(msg, type = 'info') {
@@ -1852,16 +1884,15 @@ document.getElementById('profilePhotoInput').addEventListener('change', e => {
 });
 
 document.getElementById('disconnectWalletBtn').addEventListener('click', () => {
-  S.wallet = null; S.walletType = null; S.balance = 0;
+  S.wallet = null; S.balance = 0;
   const btn = document.getElementById('connectWallet');
   btn.classList.remove('connected');
   document.getElementById('walletPillLabel').textContent = 'Connect Wallet';
   document.getElementById('headerProfileAvatar').style.display = 'none';
   document.getElementById('headerBalanceWrap').style.display = 'none';
   document.getElementById('betBtn').disabled = true;
-  document.getElementById('betBtn').textContent = 'Cashout';
+  document.getElementById('betBtn').textContent = 'Place Bet';
   document.getElementById('profileModalOverlay').classList.add('hidden');
-  updateChainBadge();
 });
 
 document.getElementById('profileUsernameInput').addEventListener('input', updateModalPreview);
@@ -1894,8 +1925,82 @@ document.getElementById('tokenModalBackdrop').addEventListener('click', e => {
   if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
 });
 
+// ─── Account Modal ────────────────────────────────────────────────────────────
+let depositAddress = null;
+
+async function openAccountModal() {
+  if (!depositAddress) {
+    try {
+      const r = await fetch('/api/deposit-address');
+      const d = await r.json();
+      depositAddress = d.address;
+    } catch { depositAddress = 'Unavailable'; }
+  }
+  document.getElementById('depositAddressText').textContent = depositAddress;
+  document.getElementById('accountBalanceVal').textContent = S.balance.toFixed(4);
+  document.getElementById('withdrawStatus').textContent = '';
+  document.getElementById('withdrawStatus').className = '';
+  document.getElementById('withdrawAmount').value = '';
+  document.getElementById('accountModalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('headerBalanceWrap').addEventListener('click', () => {
+  if (S.wallet) openAccountModal();
+});
+
+document.getElementById('accountModalClose').addEventListener('click', () => {
+  document.getElementById('accountModalOverlay').classList.add('hidden');
+});
+document.getElementById('accountModalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'accountModalOverlay')
+    document.getElementById('accountModalOverlay').classList.add('hidden');
+});
+
+document.getElementById('copyDepositBtn').addEventListener('click', () => {
+  if (!depositAddress) return;
+  navigator.clipboard.writeText(depositAddress).then(() => {
+    const btn = document.getElementById('copyDepositBtn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+});
+
+document.getElementById('withdrawBtn').addEventListener('click', async () => {
+  const amtInput = document.getElementById('withdrawAmount');
+  const statusEl = document.getElementById('withdrawStatus');
+  const btn      = document.getElementById('withdrawBtn');
+  const amount   = parseFloat(amtInput.value);
+
+  if (!S.wallet) { statusEl.textContent = 'Connect wallet first'; statusEl.className = 'error'; return; }
+  if (!amount || amount < 0.01) { statusEl.textContent = 'Minimum withdrawal is 0.01 SOL'; statusEl.className = 'error'; return; }
+  if (amount > S.balance) { statusEl.textContent = 'Insufficient balance'; statusEl.className = 'error'; return; }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Sending…';
+  statusEl.className = 'info';
+
+  try {
+    const resp = await fetch('/api/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: S.wallet, amount_lamports: Math.round(amount * 1e9) }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { statusEl.textContent = data.error || 'Withdrawal failed'; statusEl.className = 'error'; return; }
+    statusEl.innerHTML = `✓ Sent! <a href="https://solscan.io/tx/${data.signature}" target="_blank" rel="noopener" style="color:var(--accent)">View tx</a>`;
+    statusEl.className = 'success';
+    amtInput.value = '';
+    // Balance updated via balanceUpdate socket event
+    document.getElementById('accountBalanceVal').textContent = (data.balance_lamports / 1e9).toFixed(4);
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.className = 'error';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
-fetchProgramInfo();
 setTimeout(resizeCanvas, 100);
 applyProfile();
 </script>

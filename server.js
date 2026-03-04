@@ -8,237 +8,38 @@ const path   = require('path');
 const fs     = require('fs');
 const db     = require('./db');
 
-// ─── Optional Solana integration (if @solana/web3.js is installed) ──────────
-let solanaEnabled = false;
-let connection, authority, PROGRAM_ID_PK;
+// ─── Solana (deposit monitoring + withdrawals only) ───────────────────────────
+const { Connection, Keypair, PublicKey, SystemProgram, Transaction } = require('@solana/web3.js');
+const SOLANA_RPC = process.env.SOLANA_RPC || 'https://api.devnet.solana.com';
+const connection = new Connection(SOLANA_RPC, 'confirmed');
 
-try {
-  const web3 = require('@solana/web3.js');
-  const { Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
-          SystemProgram, LAMPORTS_PER_SOL, sendAndConfirmTransaction } = web3;
-
-  const SOLANA_RPC  = process.env.SOLANA_RPC  || 'https://api.devnet.solana.com';
-  const PROGRAM_ID  = process.env.PROGRAM_ID  || '';
-
-  connection = new Connection(SOLANA_RPC, 'confirmed');
-
-  // Load authority keypair — from env var (production) or local file (dev)
-  const keypairPath = path.join(__dirname, 'authority-keypair.json');
-  if (process.env.AUTHORITY_KEYPAIR) {
-    authority = Keypair.fromSecretKey(new Uint8Array(JSON.parse(process.env.AUTHORITY_KEYPAIR)));
-  } else if (fs.existsSync(keypairPath)) {
-    authority = Keypair.fromSecretKey(new Uint8Array(JSON.parse(fs.readFileSync(keypairPath))));
-  } else {
-    authority = Keypair.generate();
-    fs.writeFileSync(keypairPath, JSON.stringify(Array.from(authority.secretKey)));
-    console.log('🔑 New authority keypair saved to authority-keypair.json');
-    console.log('   Public key:', authority.publicKey.toString());
-  }
-
-  if (PROGRAM_ID) {
-    PROGRAM_ID_PK = new PublicKey(PROGRAM_ID);
-    solanaEnabled = true;
-    console.log('✅ Solana program integration enabled:', PROGRAM_ID);
-  }
-
-  // ─── Anchor discriminators (sha256("global:<name>")[0..8]) ──────────────
-  const DISC = {};
-  ['start_round','start_flying','settle_crash','cash_out','place_bet','initialize'].forEach(n => {
-    DISC[n] = crypto.createHash('sha256').update('global:' + n).digest().slice(0, 8);
-  });
-
-  // ─── PDA helpers ──────────────────────────────────────────────────────────
-  const HOUSE_SEED = Buffer.from('house_v1');
-  const VAULT_SEED = Buffer.from('vault_v1');
-  const BET_SEED   = Buffer.from('bet_v1');
-
-  function findHousePDA()  { return PublicKey.findProgramAddressSync([HOUSE_SEED], PROGRAM_ID_PK); }
-  function findVaultPDA()  { return PublicKey.findProgramAddressSync([VAULT_SEED], PROGRAM_ID_PK); }
-  function findBetPDA(playerPubkey, roundId) {
-    const roundBuf = Buffer.alloc(8);
-    roundBuf.writeBigUInt64LE(BigInt(roundId));
-    return PublicKey.findProgramAddressSync([BET_SEED, playerPubkey.toBuffer(), roundBuf], PROGRAM_ID_PK);
-  }
-
-  // ─── Robust send: retries up to maxAttempts on drop/timeout ─────────────
-
-  // Race a promise against a ms-timeout
-  function withTimeout(promise, ms, msg) {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),
-    ]);
-  }
-
-  // Poll getSignatureStatuses until confirmed/finalized (avoids websocket hangs on public RPC)
-  async function pollConfirmation(sig, timeoutMs = 90000) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const { value } = await withTimeout(
-        connection.getSignatureStatuses([sig]),
-        10000, 'getSignatureStatuses timed out'
-      );
-      const st = value[0];
-      if (st) {
-        if (st.err) throw new Error(`Tx rejected: ${JSON.stringify(st.err)}`);
-        if (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized') return;
-      }
-      await new Promise(r => setTimeout(r, 400));
-    }
-    throw new Error(`Tx not confirmed within ${timeoutMs / 1000}s`);
-  }
-
-  async function sendWithRetry(buildIx, signers, label, maxAttempts = 3) {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        console.log(`[tx] ${label} attempt ${attempt} — fetching blockhash...`);
-        const ix = buildIx();
-        const tx = new Transaction().add(ix);
-        const { blockhash } = await withTimeout(
-          connection.getLatestBlockhash('confirmed'),
-          15000, 'getLatestBlockhash timed out'
-        );
-        console.log(`[tx] ${label} attempt ${attempt} — sending...`);
-        tx.recentBlockhash = blockhash;
-        tx.feePayer        = signers[0].publicKey;
-        for (const s of signers) tx.partialSign(s);
-        const raw = tx.serialize();
-        const sig = await withTimeout(
-          connection.sendRawTransaction(raw, { skipPreflight: true }),
-          15000, 'sendRawTransaction timed out'
-        );
-        console.log(`[tx] ${label} attempt ${attempt} — confirming ${sig}...`);
-        await pollConfirmation(sig, 90000);
-        console.log(`[tx] ${label} confirmed: ${sig}`);
-        return sig;
-      } catch (e) {
-        console.error(`[tx] ${label} attempt ${attempt}/${maxAttempts} failed: ${e.message}`);
-        if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
-      }
-    }
-    throw new Error(`${label} failed after ${maxAttempts} attempts`);
-  }
-
-  // ─── Build + send a start_round instruction ───────────────────────────────
-  async function onChainStartRound(roundId, commitment) {
-    if (!solanaEnabled) return;
-    try {
-      // Wait for settle_crash/force_crash from the previous round to confirm before submitting
-      // start_round. On devnet, settlement takes 1–5 s; submitting too early causes InvalidPhase.
-      for (let i = 0; i < 15; i++) {
-        const { phase } = await getOnChainState();
-        if (phase === 0 || phase === 3) break; // WAITING or CRASHED — safe to start new round
-        await new Promise(r => setTimeout(r, 600));
-      }
-      const [housePDA] = findHousePDA();
-      const sig = await sendWithRetry(() => {
-        const data = Buffer.alloc(8 + 32);
-        DISC.start_round.copy(data, 0);
-        Buffer.from(commitment).copy(data, 8);
-        return new TransactionInstruction({
-          keys: [
-            { pubkey: housePDA, isSigner: false, isWritable: true },
-            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-          ],
-          programId: PROGRAM_ID_PK,
-          data,
-        });
-      }, [authority], 'start_round');
-      console.log(`[Round ${roundId}] start_round on-chain: ${sig}`);
-    } catch (e) { console.error('start_round ultimately failed:', e.message); }
-  }
-
-  async function onChainStartFlying(roundId) {
-    if (!solanaEnabled) return;
-    try {
-      const [housePDA] = findHousePDA();
-      const sig = await sendWithRetry(() => new TransactionInstruction({
-        keys: [
-          { pubkey: housePDA, isSigner: false, isWritable: true },
-          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-        ],
-        programId: PROGRAM_ID_PK,
-        data: Buffer.from(DISC.start_flying),
-      }), [authority], 'start_flying');
-      console.log(`[Round ${roundId}] start_flying on-chain: ${sig}`);
-    } catch (e) { console.error('start_flying ultimately failed:', e.message); }
-  }
-
-  async function onChainSettleCrash(roundId, crashBps, salt) {
-    if (!solanaEnabled) return;
-    try {
-      const [housePDA] = findHousePDA();
-      const sig = await sendWithRetry(() => {
-        const data = Buffer.alloc(8 + 4 + 32);
-        DISC.settle_crash.copy(data, 0);
-        data.writeUInt32LE(crashBps, 8);
-        Buffer.from(salt).copy(data, 12);
-        return new TransactionInstruction({
-          keys: [
-            { pubkey: housePDA, isSigner: false, isWritable: true },
-            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-          ],
-          programId: PROGRAM_ID_PK,
-          data,
-        });
-      }, [authority], 'settle_crash');
-      console.log(`[Round ${roundId}] settle_crash on-chain @ ${crashBps/100}×: ${sig}`);
-    } catch (e) { console.error('settle_crash ultimately failed:', e.message); }
-  }
-
-  // Read phase + round_id from the on-chain HouseState PDA in one call.
-  // HouseState layout: 8 discriminator + 32 authority + 8 round_id + 1 phase
-  //   round_id @ offset 40, phase @ offset 48
-  async function getOnChainState() {
-    const [housePDA] = findHousePDA();
-    const info = await connection.getAccountInfo(housePDA);
-    if (!info) throw new Error('House account not found on-chain');
-    // HouseState layout after 8-byte discriminator:
-    //   offset  8: authority Pubkey (32 bytes)
-    //   offset 40: round_id u64     (8 bytes)
-    //   offset 48: phase u8         (1 byte)
-    const houseAuthority = new PublicKey(info.data.slice(8, 40)).toString();
-    const roundId = Number(info.data.readBigUInt64LE(40));
-    const phase   = info.data.readUInt8(48);
-    return { houseAuthority, roundId, phase };
-  }
-
-  async function onChainForceCrash() {
-    const [housePDA] = findHousePDA();
-    const disc = crypto.createHash('sha256').update('global:force_crash').digest().subarray(0, 8);
-    const sig = await sendWithRetry(() => new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA,            isSigner: false, isWritable: true  },
-        { pubkey: authority.publicKey, isSigner: true,  isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data: disc,
-    }), [authority], 'force_crash');
-    console.log('[recovery] force_crash succeeded:', sig);
-    return sig;
-  }
-
-  // Expose helpers to cashout endpoint below
-  global._solana = { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC, sendAndConfirmTransaction, sendWithRetry, authority,
-    onChainStartRound, onChainStartFlying, onChainSettleCrash, onChainForceCrash };
-} catch (e) {
-  console.log('ℹ️  @solana/web3.js not installed — Solana features disabled. Run: npm install');
+// House wallet: the single address users deposit into, and withdrawals come from
+const keypairPath = path.join(__dirname, 'authority-keypair.json');
+let authority;
+if (process.env.AUTHORITY_KEYPAIR) {
+  authority = Keypair.fromSecretKey(new Uint8Array(JSON.parse(process.env.AUTHORITY_KEYPAIR)));
+} else if (fs.existsSync(keypairPath)) {
+  authority = Keypair.fromSecretKey(new Uint8Array(JSON.parse(fs.readFileSync(keypairPath))));
+} else {
+  authority = Keypair.generate();
+  fs.writeFileSync(keypairPath, JSON.stringify(Array.from(authority.secretKey)));
+  console.log('🔑 New house wallet saved to authority-keypair.json');
 }
+console.log('🏦 House wallet:', authority.publicKey.toString());
 
-// ─── Express + Socket.IO ───────────────────────────────────────────────────
+// ─── Express + Socket.IO ──────────────────────────────────────────────────────
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
 app.use(cors());
-app.use(express.json({ limit: '5mb' })); // 5mb for base64 profile photos
+app.use(express.json({ limit: '5mb' }));
 
-// ✅ FIX: serve index.html from project root (was pointing to missing ./public)
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/docs', (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
+app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/docs',       (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
 app.get('/disclaimer', (_req, res) => res.sendFile(path.join(__dirname, 'disclaimer.html')));
 
-// ─── Profile API ───────────────────────────────────────────────────────────
+// ─── Profile API ──────────────────────────────────────────────────────────────
 app.get('/api/profile/:wallet', async (req, res) => {
   if (!db) return res.json({});
   const { data, error } = await db.from('users').select('wallet,username,photo_url,total_bets,total_won,biggest_win').eq('wallet', req.params.wallet).maybeSingle();
@@ -258,219 +59,107 @@ app.post('/api/profile', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ─── REST API ──────────────────────────────────────────────────────────────
-app.get('/api/state',    (req, res) => res.json({ phase: game.phase, roundId: game.roundId, multiplier: game.multiplier, countdown: game.countdown, history: game.history }));
-app.get('/api/history',  (req, res) => res.json({ history: game.history }));
+// ─── Account API ──────────────────────────────────────────────────────────────
 
-// Diagnostic: on-chain program state (phase + round_id)
-// phases: 0=waiting 1=betting 2=flying 3=crashed
-app.get('/api/onchain-status', async (_req, res) => {
-  if (!solanaEnabled || !global._solana) return res.json({ enabled: false });
-  try {
-    const { getOnChainState } = global._solana;
-    const state = await getOnChainState();
-    const phaseNames = ['waiting','betting','flying','crashed'];
-    const serverAuthority = authority ? authority.publicKey.toString() : null;
-    res.json({
-      ...state,
-      phaseName:       phaseNames[state.phase] ?? 'unknown',
-      serverRoundId:   game.roundId,
-      serverPhase:     game.phase,
-      serverAuthority,
-      authorityMatch:  state.houseAuthority === serverAuthority,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+// The address users send SOL to in order to deposit
+app.get('/api/deposit-address', (_req, res) => {
+  res.json({ address: authority.publicKey.toString() });
 });
-app.get('/api/program',  (req, res) => res.json({
-  programId:    process.env.PROGRAM_ID || null,
-  authority:    authority ? authority.publicKey.toString() : null,
-  cluster:      process.env.SOLANA_CLUSTER || 'devnet',
-  rpc:          process.env.SOLANA_RPC || 'https://api.devnet.solana.com',
-  enabled:      solanaEnabled,
-}));
 
-// ─── /api/prepare-bet: Server builds the PlaceBet transaction for the frontend to sign ─────
-app.post('/api/prepare-bet', async (req, res) => {
-  if (!solanaEnabled) return res.status(503).json({ error: 'Solana not configured' });
-  const { wallet, amount, autoCashout } = req.body;
-  if (!wallet || !amount) return res.status(400).json({ error: 'Missing wallet or amount' });
-  if (game.phase !== 'waiting') return res.status(400).json({ error: 'Betting closed' });
-  // Reject bets with < 3 s left — not enough time for Phantom signing + tx confirmation.
-  if (game.countdown <= 3) return res.status(400).json({ error: 'Too late to bet — wait for next round' });
-
+// Query a wallet's current balance (in lamports)
+app.get('/api/balance', async (req, res) => {
+  if (!db) return res.json({ balance_lamports: 0 });
+  const { wallet } = req.query;
+  if (!wallet) return res.status(400).json({ error: 'wallet required' });
   try {
-    const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC } = global._solana;
-    const { PublicKey, Transaction, TransactionInstruction, SystemProgram } = web3;
-
-    const playerPK  = new PublicKey(wallet);
-    const [housePDA]  = findHousePDA();
-    const [vaultPDA]  = findVaultPDA();
-
-    // Single fast on-chain query — no polling. The client retries automatically.
-    // Avoids the 5-second blocking wait that caused the "stuck on Opening round" bug.
-    // Also uses the actual on-chain round_id (not game.roundId which resets on restart).
-    const { roundId: onChainRoundId, phase: onChainPhase } = await getOnChainState();
-    if (onChainPhase !== 1) { // 1 = PHASE_BETTING
-      return res.status(400).json({ retry: true, error: 'Round not open on-chain yet — try again in a moment' });
-    }
-    const [betPDA]    = findBetPDA(playerPK, onChainRoundId);
-
-    const amountLamports  = Math.floor(amount * 1_000_000_000);
-    const autoCashoutBps  = autoCashout ? Math.max(101, Math.floor(autoCashout * 100)) : 0;
-
-    const data = Buffer.alloc(8 + 8 + 4);
-    DISC.place_bet.copy(data, 0);
-    data.writeBigUInt64LE(BigInt(amountLamports), 8);
-    data.writeUInt32LE(autoCashoutBps, 16);
-
-    const ix = new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA, isSigner: false, isWritable: true  },
-        { pubkey: betPDA,   isSigner: false, isWritable: true  },
-        { pubkey: vaultPDA, isSigner: false, isWritable: true  },
-        { pubkey: playerPK, isSigner: true,  isWritable: true  },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data,
-    });
-
-    const tx = new Transaction().add(ix);
-    const bh = await connection.getLatestBlockhash();
-    tx.recentBlockhash = bh.blockhash;
-    tx.feePayer = playerPK;
-
-    const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-    res.json({ transaction: serialized.toString('base64'), blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight });
+    const balance_lamports = await db.getBalance(wallet);
+    res.json({ balance_lamports });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ─── /api/cashout: Server signs + submits the CashOut tx ─────────────────
-app.post('/api/cashout', async (req, res) => {
-  if (!solanaEnabled) return res.status(503).json({ error: 'Solana not configured' });
-  const { wallet } = req.body;
-  if (!wallet) return res.status(400).json({ error: 'Missing wallet' });
-  if (game.phase !== 'flying') return res.status(400).json({ error: 'Game not in progress' });
-  const bet = game.bets[wallet];
-  if (!bet) return res.status(400).json({ error: 'No active bet' });
-  if (bet.cashedOut) return res.status(400).json({ error: 'Already cashed out' });
+// Withdraw SOL from the user's account to their wallet
+app.post('/api/withdraw', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not configured' });
+  const { wallet, amount_lamports } = req.body;
+  if (!wallet || !amount_lamports) return res.status(400).json({ error: 'wallet and amount_lamports required' });
 
-  // Lock and finalize payout immediately — don't block on on-chain confirmation.
-  // Responding fast is critical: crash points like 1.1× only give ~1 second of flying time.
-  bet.cashedOut = true;
-  const snapMultiplier    = game.multiplier;
-  const snapMultiplierBps = Math.floor(snapMultiplier * 100);
+  const lamports = parseInt(amount_lamports);
+  if (isNaN(lamports) || lamports < 10_000_000) {
+    return res.status(400).json({ error: 'Minimum withdrawal is 0.01 SOL' });
+  }
 
-  bet.cashOutAt = snapMultiplier;
-  const gross   = bet.amount * snapMultiplier;
-  const fee     = parseFloat((gross * CASHOUT_FEE).toFixed(6));
-  bet.payout    = parseFloat((gross - fee).toFixed(6));
-  totalFeesCollected += fee;
-  console.log(`[fees] +${fee.toFixed(4)} SOL → ${FEE_WALLET} (total: ${totalFeesCollected.toFixed(4)} SOL)`);
+  let destPubkey;
+  try { destPubkey = new PublicKey(wallet); } catch {
+    return res.status(400).json({ error: 'Invalid wallet address' });
+  }
 
-  // Respond to client immediately
-  res.json({ multiplier: snapMultiplier, payout: bet.payout });
+  // 1. Atomic debit — throws if balance is insufficient
+  try {
+    await db.debitBalance(wallet, lamports);
+  } catch {
+    return res.status(400).json({ error: 'Insufficient balance' });
+  }
 
-  // Broadcast to all clients so player lists update (mirrors the socket cashOut path)
-  io.emit('playerCashedOut', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), multiplier: snapMultiplier });
+  // 2. Send SOL on-chain
+  try {
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: authority.publicKey,
+        toPubkey:   destPubkey,
+        lamports:   BigInt(lamports),
+      })
+    );
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = authority.publicKey;
+    tx.sign(authority);
 
-  // Settle on-chain in background (non-blocking)
-  if (global._solana) {
-    const { web3, findHousePDA, findVaultPDA, findBetPDA, getOnChainState, DISC, sendWithRetry, authority } = global._solana;
-    const { PublicKey, TransactionInstruction, SystemProgram } = web3;
-    (async () => {
-      try {
-        const playerPK   = new PublicKey(wallet);
-        const [housePDA] = findHousePDA();
-        const [vaultPDA] = findVaultPDA();
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+    await connection.confirmTransaction(sig, 'confirmed');
 
-        // Wait for on-chain FLYING phase (up to 8 s)
-        let onChainRoundId;
-        for (let i = 0; i < 16; i++) {
-          const s = await getOnChainState();
-          if (s.phase === 2) { onChainRoundId = s.roundId; break; }
-          if (i === 15) { console.error('[cashout bg] Timed out waiting for FLYING'); return; }
-          await new Promise(r => setTimeout(r, 500));
-        }
+    await db.logTransaction(wallet, 'withdrawal', lamports, sig);
 
-        const [betPDA] = findBetPDA(playerPK, onChainRoundId);
-        const data = Buffer.alloc(8 + 4);
-        DISC.cash_out.copy(data, 0);
-        data.writeUInt32LE(snapMultiplierBps, 8);
+    const balance_lamports = await db.getBalance(wallet);
+    const socketId = walletSockets[wallet];
+    if (socketId) io.to(socketId).emit('balanceUpdate', { balance_lamports });
 
-        const sig = await sendWithRetry(() => new TransactionInstruction({
-          keys: [
-            { pubkey: housePDA,                isSigner: false, isWritable: true  },
-            { pubkey: betPDA,                  isSigner: false, isWritable: true  },
-            { pubkey: vaultPDA,                isSigner: false, isWritable: true  },
-            { pubkey: playerPK,                isSigner: false, isWritable: true  },
-            { pubkey: authority.publicKey,     isSigner: true,  isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-          programId: PROGRAM_ID_PK,
-          data,
-        }), [authority], 'cash_out');
-        console.log(`[cashout bg] on-chain settled @ ${snapMultiplier}×: ${sig}`);
-      } catch (e) {
-        console.error('[cashout bg] on-chain settlement failed:', e.message);
-      }
-    })();
+    console.log(`[withdraw] ${(lamports / 1e9).toFixed(6)} SOL → ${wallet.slice(0, 8)}... | ${sig}`);
+    res.json({ ok: true, signature: sig, balance_lamports });
+  } catch (e) {
+    // Transfer failed — refund the debited balance
+    console.error('[withdraw] Transfer failed, refunding:', e.message);
+    await db.creditBalance(wallet, lamports).catch(() => {});
+    res.status(500).json({ error: 'Transfer failed: ' + e.message });
   }
 });
 
-// ─── Game State ────────────────────────────────────────────────────────────
+// ─── Game State API ───────────────────────────────────────────────────────────
+app.get('/api/state',   (_req, res) => res.json({ phase: game.phase, roundId: game.roundId, multiplier: game.multiplier, countdown: game.countdown, history: game.history }));
+app.get('/api/history', (_req, res) => res.json({ history: game.history }));
+
+// ─── Game State ───────────────────────────────────────────────────────────────
 let game = {
-  phase: 'waiting',
-  roundId: 1,
+  phase:      'waiting',
+  roundId:    1,
   crashPoint: 1.00,
   multiplier: 1.00,
-  startTime: null,
-  bets: {},
-  history: [],
-  countdown: 15,
-  flyingInterval: null,
+  startTime:  null,
+  bets:       {},
+  history:    [],
+  countdown:  20,
+  flyingInterval:    null,
   countdownInterval: null,
-  // Provably-fair data stored per round
-  _salt: null,
-  _crashBps: 0,
-  _commitment: null,
 };
 
-// ─── House Edge Config ──────────────────────────────────────────────────────
-const HOUSE_EDGE   = 0.01;  // 1% baked into crash point distribution
-const CASHOUT_FEE  = 0.01;  // 1% fee on every cashout payout
-const FEE_WALLET   = '35HsLa2JTKMaZBTNNvdfRdYQbd3FrFvFvsqSdBSDXuJC';
-let   totalFeesCollected = 0; // running total (SOL) for this session
+// ─── House Edge Config ────────────────────────────────────────────────────────
+const HOUSE_EDGE  = 0.01;  // 1% baked into crash point distribution
+const CASHOUT_FEE = 0.01;  // 1% fee on every cashout payout
+const FEE_WALLET  = '35HsLa2JTKMaZBTNNvdfRdYQbd3FrFvFvsqSdBSDXuJC';
+let   totalFeesCollected = 0;
 
-// ─── Round State Persistence (survive server restarts) ──────────────────────
-const ROUND_STATE_FILE = path.join(__dirname, 'round-state.json');
-
-function saveRoundState(roundId, crashBps, salt, commitment) {
-  try {
-    fs.writeFileSync(ROUND_STATE_FILE, JSON.stringify({
-      roundId,
-      crashBps,
-      salt:       Array.from(salt),
-      commitment: Array.from(commitment),
-    }));
-  } catch (e) { console.error('saveRoundState failed:', e.message); }
-}
-
-function loadRoundState() {
-  try {
-    if (!fs.existsSync(ROUND_STATE_FILE)) return null;
-    const d = JSON.parse(fs.readFileSync(ROUND_STATE_FILE, 'utf8'));
-    d.salt       = Buffer.from(d.salt);
-    d.commitment = Buffer.from(d.commitment);
-    return d;
-  } catch { return null; }
-}
-
-// ─── Provably Fair ─────────────────────────────────────────────────────────
+// ─── Provably Fair ────────────────────────────────────────────────────────────
 function generateCrashPoint() {
   const salt = crypto.randomBytes(32);
   const seed = `${game.roundId}-${Date.now()}-${salt.toString('hex')}`;
@@ -478,26 +167,10 @@ function generateCrashPoint() {
   const h    = parseInt(hash.slice(0, 8), 16);
   const e    = Math.pow(2, 32);
   const raw  = Math.floor(((1 - HOUSE_EDGE) * 100 * e - h) / (e - h)) / 100;
-  const crashPoint = Math.max(1.00, raw);
-  const crashBps   = Math.floor(crashPoint * 100);
-
-  // Compute commitment for on-chain provably-fair
-  const preimage = Buffer.alloc(4 + 32);
-  preimage.writeUInt32LE(crashBps, 0);
-  salt.copy(preimage, 4);
-  const commitment = crypto.createHash('sha256').update(preimage).digest();
-
-  game._salt       = salt;
-  game._crashBps   = crashBps;
-  game._commitment = commitment;
-
-  // Persist so we can call settle_crash after a server restart
-  saveRoundState(game.roundId, crashBps, salt, commitment);
-
-  return crashPoint;
+  return Math.max(1.00, raw);
 }
 
-// ─── Game Loop ──────────────────────────────────────────────────────────────
+// ─── Game Loop ────────────────────────────────────────────────────────────────
 function startCountdown() {
   clearInterval(game.flyingInterval);
   clearInterval(game.countdownInterval);
@@ -507,27 +180,10 @@ function startCountdown() {
   game.bets       = {};
   game.multiplier = 1.00;
   game.countdown  = 20;
-  console.log(`[round ${game.roundId}] countdown started: ${game.countdown}s`);
   game.crashPoint = generateCrashPoint();
 
+  console.log(`[round ${game.roundId}] countdown started`);
   io.emit('phase', { phase: 'waiting', roundId: game.roundId, countdown: game.countdown });
-
-  // Kick off on-chain start_round asynchronously (doesn't block game loop)
-  if (solanaEnabled && global._solana) {
-    console.log(`[on-chain] start_round queued for round ${game.roundId}`);
-    (async () => {
-      try {
-        await global._solana.onChainStartRound(game.roundId, game._commitment);
-        // After start_round confirms, sync game.roundId to the real on-chain value.
-        // Server restarts reset game.roundId to 1; this corrects any mismatch.
-        const { roundId: ocId } = await global._solana.getOnChainState();
-        if (ocId !== game.roundId) {
-          console.warn(`[sync] game.roundId corrected: ${game.roundId} → ${ocId}`);
-          game.roundId = ocId;
-        }
-      } catch (e) { console.error('[on-chain] start_round IIFE error:', e.message); }
-    })();
-  }
 
   game.countdownInterval = setInterval(() => {
     game.countdown--;
@@ -547,14 +203,6 @@ function startFlying() {
 
   io.emit('phase', { phase: 'flying', roundId: game.roundId });
 
-  if (solanaEnabled && global._solana) {
-    console.log(`[on-chain] start_flying queued for round ${game.roundId}`);
-    (async () => {
-      try { await global._solana.onChainStartFlying(game.roundId); }
-      catch (e) { console.error('[on-chain] start_flying IIFE error:', e.message); }
-    })();
-  }
-
   game.flyingInterval = setInterval(() => {
     const elapsed = (Date.now() - game.startTime) / 1000;
     game.multiplier = parseFloat(Math.pow(Math.E, 0.09 * elapsed).toFixed(2));
@@ -565,10 +213,8 @@ function startFlying() {
         const result = processCashOut(wallet);
         if (result) {
           const socketId = walletSockets[wallet];
-          if (socketId) {
-            io.to(socketId).emit('cashedOut', { multiplier: result.cashOutAt, payout: result.payout, amount: result.amount });
-          }
-          io.emit('playerCashedOut', { wallet: wallet.slice(0,6)+'...'+wallet.slice(-4), multiplier: result.cashOutAt });
+          if (socketId) io.to(socketId).emit('cashedOut', { multiplier: result.cashOutAt, payout: result.payout, amount: result.amount });
+          io.emit('playerCashedOut', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), multiplier: result.cashOutAt });
         }
       }
     }
@@ -590,21 +236,15 @@ function doCrash() {
   game.history.unshift(cp);
   if (game.history.length > 20) game.history.pop();
 
-  for (const bet of Object.values(game.bets)) {
-    if (!bet.cashedOut) bet.lost = true;
+  // Log losses for uncashed bets (balance was already debited when bet was placed)
+  for (const [wallet, bet] of Object.entries(game.bets)) {
+    if (!bet.cashedOut) {
+      bet.lost = true;
+      if (db) db.logTransaction(wallet, 'loss', Math.round(bet.amount * 1e9), String(game.roundId)).catch(() => {});
+    }
   }
 
   io.emit('crashed', { crashPoint: cp, history: [...game.history] });
-
-  if (solanaEnabled && global._solana) {
-    const { _crashBps, _salt, roundId } = { _crashBps: game._crashBps, _salt: game._salt, roundId: game.roundId };
-    console.log(`[on-chain] settle_crash queued for round ${roundId}`);
-    (async () => {
-      try { await global._solana.onChainSettleCrash(roundId, _crashBps, _salt); }
-      catch (e) { console.error('[on-chain] settle_crash IIFE error:', e.message); }
-    })();
-  }
-
   game.roundId++;
   setTimeout(startCountdown, 4000);
 }
@@ -612,21 +252,35 @@ function doCrash() {
 function processCashOut(wallet) {
   const bet = game.bets[wallet];
   if (!bet || bet.cashedOut) return null;
-  bet.cashedOut  = true;
-  bet.cashOutAt  = game.multiplier;
-  const gross    = bet.amount * game.multiplier;
-  const fee      = parseFloat((gross * CASHOUT_FEE).toFixed(6));
-  bet.payout     = parseFloat((gross - fee).toFixed(6));
+
+  bet.cashedOut = true;
+  bet.cashOutAt = game.multiplier;
+  const gross   = bet.amount * game.multiplier;
+  const fee     = parseFloat((gross * CASHOUT_FEE).toFixed(6));
+  bet.payout    = parseFloat((gross - fee).toFixed(6));
   totalFeesCollected += fee;
   console.log(`[fees] +${fee.toFixed(4)} SOL → ${FEE_WALLET} (total: ${totalFeesCollected.toFixed(4)} SOL)`);
+
+  // Credit the payout to the player's account (non-blocking — speed is critical here)
+  if (db) {
+    const payoutLamports = Math.round(bet.payout * 1e9);
+    const roundId = String(game.roundId);
+    db.creditBalance(wallet, payoutLamports)
+      .then(() => db.logTransaction(wallet, 'cashout', payoutLamports, roundId))
+      .then(async () => {
+        const balance_lamports = await db.getBalance(wallet);
+        const sid = walletSockets[wallet];
+        if (sid) io.to(sid).emit('balanceUpdate', { balance_lamports });
+      })
+      .catch(e => console.error('[cashout] balance update failed:', e.message));
+  }
+
   return bet;
 }
 
-// ─── Socket.IO ─────────────────────────────────────────────────────────────
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
 const walletSockets = {};
-
-// ─── Chat ─────────────────────────────────────────────────────────────────────
-const chatHistory = [];
+const chatHistory   = [];
 
 (async () => {
   if (!db) return;
@@ -651,18 +305,36 @@ io.on('connection', (socket) => {
   if (chatHistory.length > 0) socket.emit('chatHistory', chatHistory);
   io.emit('onlineCount', io.sockets.sockets.size);
 
-  socket.on('register', ({ wallet }) => {
+  socket.on('register', async ({ wallet }) => {
     if (!wallet) return;
     walletSockets[wallet] = socket.id;
-    if (db) db.from('users').upsert({ wallet, last_seen: new Date().toISOString() }, { onConflict: 'wallet', ignoreDuplicates: false }).then(() => {});
+    if (db) {
+      db.from('users').upsert({ wallet, last_seen: new Date().toISOString() }, { onConflict: 'wallet' }).then(() => {});
+      try {
+        const balance_lamports = await db.getBalance(wallet);
+        socket.emit('balanceUpdate', { balance_lamports });
+      } catch (e) {
+        console.error('[register] getBalance failed:', e.message);
+      }
+    }
   });
 
-  socket.on('placeBet', ({ wallet, amount, autoCashOut }) => {
+  socket.on('placeBet', async ({ wallet, amount, autoCashOut }) => {
     if (!wallet)  return socket.emit('betError', 'No wallet provided.');
     amount = parseFloat(amount);
     if (!amount || amount <= 0 || isNaN(amount)) return socket.emit('betError', 'Invalid amount.');
     if (game.phase !== 'waiting')  return socket.emit('betError', 'Betting is closed. Wait for next round.');
     if (game.bets[wallet])         return socket.emit('betError', 'Bet already placed this round.');
+
+    const lamports = Math.round(amount * 1e9);
+    if (db) {
+      try {
+        await db.debitBalance(wallet, lamports);
+        await db.logTransaction(wallet, 'bet', lamports, String(game.roundId));
+      } catch {
+        return socket.emit('betError', 'Insufficient balance. Deposit more SOL to play.');
+      }
+    }
 
     game.bets[wallet] = {
       amount,
@@ -671,8 +343,17 @@ io.on('connection', (socket) => {
     };
 
     socket.emit('betConfirmed', { amount, autoCashOut: game.bets[wallet].autoCashOut });
+
+    // Send updated balance immediately
+    if (db) {
+      try {
+        const balance_lamports = await db.getBalance(wallet);
+        socket.emit('balanceUpdate', { balance_lamports });
+      } catch {}
+    }
+
     if (db) db.rpc('track_bet', { p_wallet: wallet }).then(() => {});
-    io.emit('betPlaced', { wallet: wallet.slice(0,6)+'...'+wallet.slice(-4), amount });
+    io.emit('betPlaced', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), amount });
   });
 
   socket.on('cashOut', ({ wallet }) => {
@@ -686,7 +367,7 @@ io.on('connection', (socket) => {
     if (!result) return socket.emit('cashOutError', 'Cash out failed.');
 
     socket.emit('cashedOut', { multiplier: result.cashOutAt, payout: result.payout, amount: result.amount });
-    io.emit('playerCashedOut', { wallet: wallet.slice(0,6)+'...'+wallet.slice(-4), multiplier: result.cashOutAt });
+    io.emit('playerCashedOut', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), multiplier: result.cashOutAt });
     if (db) db.rpc('track_cashout', { p_wallet: wallet, p_profit: result.payout - result.amount, p_biggest: result.payout }).then(() => {});
   });
 
@@ -708,182 +389,68 @@ io.on('connection', (socket) => {
   });
 });
 
-// ─── Admin: diagnose start_round failures ────────────────────────────────────
-// GET /api/admin/diagnose — simulates start_round and reports the exact error
-app.get('/api/admin/diagnose', async (_req, res) => {
-  if (!solanaEnabled || !global._solana) return res.status(503).json({ error: 'Solana not enabled' });
+// ─── Deposit Monitor ──────────────────────────────────────────────────────────
+async function monitorDeposits() {
+  if (!db) return;
   try {
-    const { web3, findHousePDA, getOnChainState, DISC, authority } = global._solana;
-    const { Transaction, TransactionInstruction } = web3;
-    const [housePDA] = findHousePDA();
+    const sigs = await connection.getSignaturesForAddress(authority.publicKey, { limit: 25 });
+    console.log(`[deposits] checking ${sigs.length} signatures`);
 
-    const [balance, state] = await Promise.all([
-      connection.getBalance(authority.publicKey),
-      getOnChainState(),
-    ]);
+    for (const { signature } of sigs) {
+      const already = await db.isDepositProcessed(signature);
+      if (already) continue;
 
-    // Build a start_round tx with a dummy commitment just to simulate it
-    const data = Buffer.alloc(8 + 32);
-    DISC.start_round.copy(data, 0);
-    // dummy commitment — simulation will fail on phase check before hash check
-    const ix = new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA,            isSigner: false, isWritable: true  },
-        { pubkey: authority.publicKey, isSigner: true,  isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data,
-    });
-    const tx = new Transaction().add(ix);
-    const bh = await connection.getLatestBlockhash();
-    tx.recentBlockhash = bh.blockhash;
-    tx.feePayer = authority.publicKey;
-    tx.sign(authority);
+      const tx = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+      if (!tx) { console.log(`[deposits] tx not found: ${signature.slice(0,12)}`); continue; }
+      if (tx.meta?.err) { console.log(`[deposits] tx has error, skipping`); continue; }
 
-    const sim = await connection.simulateTransaction(tx);
+      const houseKey = authority.publicKey.toString();
+      const rawKeys  = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys || [];
+      const accounts = rawKeys.map(k => (typeof k.toString === 'function' ? k.toString() : String(k)));
+      console.log(`[deposits] sig ${signature.slice(0,12)} accounts:`, accounts.slice(0, 3));
 
-    res.json({
-      authorityBalance: (balance / 1e9).toFixed(6) + ' SOL',
-      onChainState: state,
-      simulation: {
-        err:  sim.value.err,
-        logs: sim.value.logs,
-      },
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+      const houseIdx = accounts.indexOf(houseKey);
+      if (houseIdx === -1) { console.log(`[deposits] house wallet not in accounts, skipping`); continue; }
 
-// ─── Admin: force-crash (recover from stuck FLYING state) ───────────────────
-// Call once when /api/onchain-status shows phaseName = "flying" or "betting"
-// after a server restart that lost the original salt.
-app.post('/api/admin/force-crash', async (_req, res) => {
-  if (!solanaEnabled || !global._solana) return res.status(503).json({ error: 'Solana not enabled' });
-  try {
-    const { web3, findHousePDA, sendWithRetry, authority } = global._solana;
-    const { TransactionInstruction } = web3;
-    const [housePDA] = findHousePDA();
+      const received = tx.meta.postBalances[houseIdx] - tx.meta.preBalances[houseIdx];
+      console.log(`[deposits] received by house: ${received} lamports`);
+      if (received < 1_000_000) { console.log(`[deposits] dust, skipping`); continue; }
 
-    // Discriminator for force_crash = sha256("global:force_crash")[0..8]
-    const disc = crypto.createHash('sha256').update('global:force_crash').digest().subarray(0, 8);
-    const sig = await sendWithRetry(() => new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA,              isSigner: false, isWritable: true  },
-        { pubkey: authority.publicKey,   isSigner: true,  isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data: disc,
-    }), [authority], 'force_crash');
-    console.log('[admin] force_crash succeeded:', sig);
-    res.json({ ok: true, signature: sig });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+      const sender = accounts[0];
+      if (sender === houseKey) { console.log(`[deposits] outgoing tx, skipping`); continue; }
 
-// ─── Admin: withdraw house profits from the vault ────────────────────────────
-// POST /api/admin/withdraw  body: { amount: <SOL as float> }
-// SOL is always forwarded to WITHDRAW_DESTINATION — no other address is possible.
-const WITHDRAW_DESTINATION = 'DjGYTPqUvFvCMR3qneDN3dBg6EezeRF5ssj2T7turi4d';
+      console.log(`[deposits] crediting ${(received / 1e9).toFixed(6)} SOL to ${sender.slice(0, 8)}...`);
+      await db.recordDeposit(signature, sender, received);
+      console.log(`[deposit] ✓ credited!`);
 
-app.post('/api/admin/withdraw', async (req, res) => {
-  if (!solanaEnabled || !global._solana) return res.status(503).json({ error: 'Solana not enabled' });
-  const amountSol = parseFloat(req.body.amount);
-  if (!amountSol || amountSol <= 0) return res.status(400).json({ error: 'amount (SOL) required' });
-
-  try {
-    const { web3, findHousePDA, findVaultPDA, sendWithRetry, authority } = global._solana;
-    const { TransactionInstruction, SystemProgram, PublicKey } = web3;
-    const [housePDA] = findHousePDA();
-    const [vaultPDA] = findVaultPDA();
-    const destPK     = new PublicKey(WITHDRAW_DESTINATION);
-
-    const amountLamports = BigInt(Math.floor(amountSol * 1_000_000_000));
-
-    // Step 1: on-chain withdraw — vault → authority (contract enforces escrowed-balance check)
-    const disc = crypto.createHash('sha256').update('global:withdraw').digest().subarray(0, 8);
-    const data = Buffer.alloc(8 + 8);
-    disc.copy(data, 0);
-    data.writeBigUInt64LE(amountLamports, 8);
-
-    const sig1 = await sendWithRetry(() => new TransactionInstruction({
-      keys: [
-        { pubkey: housePDA,                isSigner: false, isWritable: false },
-        { pubkey: vaultPDA,                isSigner: false, isWritable: true  },
-        { pubkey: authority.publicKey,     isSigner: true,  isWritable: true  },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      programId: PROGRAM_ID_PK,
-      data,
-    }), [authority], 'withdraw-vault-to-authority');
-
-    // Step 2: native transfer — authority → WITHDRAW_DESTINATION
-    const sig2 = await sendWithRetry(
-      () => SystemProgram.transfer({ fromPubkey: authority.publicKey, toPubkey: destPK, lamports: amountLamports }),
-      [authority], 'withdraw-forward-to-destination'
-    );
-
-    console.log(`[admin] withdraw ${amountSol} SOL → ${WITHDRAW_DESTINATION}: ${sig2}`);
-    res.json({ ok: true, withdrawn_sol: amountSol, destination: WITHDRAW_DESTINATION,
-               sig_vault_to_authority: sig1, sig_to_destination: sig2 });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ─── On-chain startup recovery ───────────────────────────────────────────────
-// If the server was killed while a round was flying, the on-chain program
-// gets stuck in PHASE_FLYING.  We try to settle it using the persisted
-// round-state.json; if that file matches the on-chain round we settle normally,
-// otherwise we warn the operator to call /api/admin/force-crash manually.
-async function recoverOnChainState() {
-  if (!solanaEnabled || !global._solana) return;
-  const { getOnChainState } = global._solana;
-  try {
-    const { phase, roundId } = await getOnChainState();
-    const phaseNames = ['waiting','betting','flying','crashed'];
-    console.log(`[recovery] On-chain: phase=${phaseNames[phase]??phase} roundId=${roundId}`);
-
-    if (phase === 2) { // PHASE_FLYING — need settle_crash first
-      const saved = loadRoundState();
-      if (saved && Number(saved.roundId) === roundId) {
-        console.log('[recovery] Settling stuck round using saved state...');
-        await global._solana.onChainSettleCrash(saved.roundId, saved.crashBps, saved.salt);
-        console.log('[recovery] settle_crash OK');
-      } else {
-        console.warn('[recovery] ⚠️  On-chain is FLYING, no saved state — calling force_crash automatically...');
-        await global._solana.onChainForceCrash();
-        console.log('[recovery] force_crash OK — on-chain is now CRASHED, game loop can proceed');
-      }
-    } else if (phase === 1) { // PHASE_BETTING — start_flying was never called; settle it
-      const saved = loadRoundState();
-      if (saved && Number(saved.roundId) === roundId) {
-        console.log('[recovery] On-chain is BETTING; starting flying then settling...');
-        await global._solana.onChainStartFlying(saved.roundId);
-        await global._solana.onChainSettleCrash(saved.roundId, saved.crashBps, saved.salt);
-        console.log('[recovery] Recovered from BETTING phase');
+      const socketId = walletSockets[sender];
+      if (socketId) {
+        const balance_lamports = await db.getBalance(sender);
+        io.to(socketId).emit('balanceUpdate', { balance_lamports });
       }
     }
-
-    // Sync game.roundId so betPDA uses the correct on-chain round after restart.
-    // start_round increments house.round_id by 1, so next round = current + 1.
-    const finalState = await getOnChainState();
-    const nextRound = finalState.roundId + 1;
-    if (game.roundId !== nextRound) {
-      console.log(`[recovery] Syncing game.roundId: ${game.roundId} → ${nextRound} (on-chain is ${finalState.roundId})`);
-      game.roundId = nextRound;
-    }
   } catch (e) {
-    console.error('[recovery] Failed:', e.message);
+    console.error('[deposits] Monitor error:', e.message, e.stack);
   }
 }
 
-// ─── Start ──────────────────────────────────────────────────────────────────
+// Run immediately on startup, then every 10 seconds
+monitorDeposits();
+setInterval(monitorDeposits, 10_000);
+
+// Debug endpoint: manually trigger deposit check
+app.get('/api/admin/check-deposits', async (_req, res) => {
+  await monitorDeposits();
+  res.json({ ok: true });
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
+server.listen(PORT, () => {
   console.log(`🚀 Crash game running at http://localhost:${PORT}`);
-  if (authority) console.log(`🔑 Authority: ${authority.publicKey.toString()}`);
-  await recoverOnChainState();
+  console.log(`🏦 House wallet (deposit here): ${authority.publicKey.toString()}`);
   startCountdown();
 });
