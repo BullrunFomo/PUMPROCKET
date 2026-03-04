@@ -1051,6 +1051,7 @@
           <path d="M13 2.5H3.5L1 0.5H10.5L13 2.5Z" fill="#00E4A2"/>
         </svg>
         <span class="hb-val" id="headerBalanceVal">0.0000</span>
+        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-left:4px;opacity:0.5;flex-shrink:0"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <button class="wallet-pill" id="connectWallet">
         <div class="wallet-pill-avatar" id="headerProfileAvatar" style="display:none"></div>
@@ -1105,8 +1106,9 @@
           <span class="prefix">✕</span>
           <input type="number" id="autoCashOut" placeholder="0.00" min="1.01" step="0.1" />
         </div>
+        <span id="networkBadgeLabel" style="font-size:0.64rem;font-weight:600;color:#00E4A2;display:block;margin-top:6px;opacity:0.85"></span>
 
-        <button id="betBtn" disabled>Place Bet</button>
+        <button id="betBtn" disabled style="margin-top:24px">Place Bet</button>
         <button id="cashOutBtn">💸 Cashout</button>
         <div id="betStatus"></div>
       </div>
@@ -1262,13 +1264,14 @@
 <script>
 // ─── App State ───────────────────────────────────────────────────────────────
 const S = {
-  wallet:      null,
-  balance:     0,   // in SOL (synced from server via balanceUpdate)
-  phase:       'waiting',
-  multiplier:  1.00,
-  myBet:       null,
-  myCashedOut: false,
-  cashOutMult: null,
+  wallet:        null,
+  balance:       0,   // in SOL (synced from server via balanceUpdate)
+  serverNetwork: 'devnet', // from init event — used for demo mode detection
+  phase:         'waiting',
+  multiplier:    1.00,
+  myBet:         null,
+  myCashedOut:   false,
+  cashOutMult:   null,
   roundId:     1,
   graphPoints: [],
 };
@@ -1491,6 +1494,7 @@ socket.on('init', (data) => {
   updateRoundBadge(data.roundId);
   updateHistory(data.history);
   updateNavBadge(data.history);
+  S.serverNetwork = data.network || 'devnet';
 
   if (data.phase === 'waiting') {
     showCountdown(data.countdown);
@@ -1609,6 +1613,24 @@ socket.on('playerCashedOut', ({ wallet, multiplier }) => {
 });
 
 // ─── Wallet Connect ──────────────────────────────────────────────────────────
+async function updateNetworkBadge(phantom) {
+  const label = document.getElementById('networkBadgeLabel');
+  if (S.serverNetwork === 'demo') {
+    label.textContent = '◉ Offchain - Demo Mode';
+    label.style.color = '#aaa';
+    return;
+  }
+  try {
+    const hash = await phantom.request({ method: 'getGenesisHash' });
+    const isMainnet = hash === '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
+    label.textContent = isMainnet ? '◉ Onchain - Mainnet' : '◉ Onchain - Devnet';
+    label.style.color = '#00E4A2';
+  } catch {
+    label.textContent = '◉ Onchain - Devnet';
+    label.style.color = '#00E4A2';
+  }
+}
+
 document.getElementById('connectWallet').addEventListener('click', async () => {
   const btn = document.getElementById('connectWallet');
 
@@ -1644,6 +1666,7 @@ document.getElementById('connectWallet').addEventListener('click', async () => {
   applyProfile();
   fetchProfileFromServer(S.wallet);
   socket.emit('register', { wallet: S.wallet });
+  updateNetworkBadge(phantom);
 });
 
 async function fetchProfileFromServer(wallet) {
@@ -1783,7 +1806,7 @@ function showCountdown(n) {
   const ov = document.getElementById('countdownOverlay');
   ov.classList.remove('hidden');
   document.getElementById('cdNum').textContent = n;
-  document.getElementById('cdSub').textContent = n > 5 ? n + ' seconds' : n > 2 ? 'Hurry up!' : 'Starting soon...';
+  document.getElementById('cdSub').textContent = n >= 10 ? n + ' seconds' : n >= 3 ? 'Hurry up!' : 'Starting soon!';
 }
 function hideCountdown() {
   document.getElementById('countdownOverlay').classList.add('hidden');
@@ -1820,8 +1843,8 @@ function updateHistory(history) {
   });
 }
 function pillClass(cp) {
-  if (cp < 2)    return 'cp-low';
-  if (cp < 10)   return 'cp-mid';
+  if (cp <= 1.49) return 'cp-low';
+  if (cp < 9.99)  return 'cp-mid';
   return 'cp-high';
 }
 function updateNavBadge(history) {
@@ -1893,6 +1916,7 @@ document.getElementById('disconnectWalletBtn').addEventListener('click', () => {
   document.getElementById('betBtn').disabled = true;
   document.getElementById('betBtn').textContent = 'Place Bet';
   document.getElementById('profileModalOverlay').classList.add('hidden');
+  document.getElementById('networkBadgeLabel').textContent = '';
 });
 
 document.getElementById('profileUsernameInput').addEventListener('input', updateModalPreview);
@@ -2003,6 +2027,7 @@ document.getElementById('withdrawBtn').addEventListener('click', async () => {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 setTimeout(resizeCanvas, 100);
 applyProfile();
+
 </script>
 </body>
 </html>

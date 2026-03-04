@@ -61,6 +61,19 @@ app.post('/api/profile', async (req, res) => {
 
 // ─── Account API ──────────────────────────────────────────────────────────────
 
+// Network mode info
+app.get('/api/network', (_req, res) => {
+  let mode;
+  if (!db) {
+    mode = 'demo';
+  } else if (SOLANA_RPC.includes('mainnet')) {
+    mode = 'mainnet';
+  } else {
+    mode = 'devnet';
+  }
+  res.json({ mode });
+});
+
 // The address users send SOL to in order to deposit
 app.get('/api/deposit-address', (_req, res) => {
   res.json({ address: authority.publicKey.toString() });
@@ -294,12 +307,14 @@ const chatHistory   = [];
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
+  const networkMode = !db ? 'demo' : SOLANA_RPC.includes('mainnet') ? 'mainnet' : 'devnet';
   socket.emit('init', {
     phase:      game.phase,
     roundId:    game.roundId,
     multiplier: game.multiplier,
     countdown:  game.countdown,
     history:    [...game.history],
+    network:    networkMode,
   });
 
   if (chatHistory.length > 0) socket.emit('chatHistory', chatHistory);
@@ -393,10 +408,12 @@ io.on('connection', (socket) => {
 async function monitorDeposits() {
   if (!db) return;
   try {
-    const sigs = await connection.getSignaturesForAddress(authority.publicKey, { limit: 25 });
-    console.log(`[deposits] checking ${sigs.length} signatures`);
+    const sigs = await connection.getSignaturesForAddress(authority.publicKey, { limit: 100 });
+    // Filter out failed txs immediately — no RPC call needed, err is in the sig info
+    const successSigs = sigs.filter(s => !s.err);
+    console.log(`[deposits] checking ${successSigs.length}/${sigs.length} successful signatures`);
 
-    for (const { signature } of sigs) {
+    for (const { signature } of successSigs) {
       const already = await db.isDepositProcessed(signature);
       if (already) continue;
 
@@ -405,7 +422,7 @@ async function monitorDeposits() {
         maxSupportedTransactionVersion: 0,
       });
       if (!tx) { console.log(`[deposits] tx not found: ${signature.slice(0,12)}`); continue; }
-      if (tx.meta?.err) { console.log(`[deposits] tx has error, skipping`); continue; }
+      if (tx.meta?.err) continue; // double-check
 
       const houseKey = authority.publicKey.toString();
       const rawKeys  = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys || [];
@@ -437,9 +454,9 @@ async function monitorDeposits() {
   }
 }
 
-// Run immediately on startup, then every 10 seconds
+// Run immediately on startup, then every 30 seconds
 monitorDeposits();
-setInterval(monitorDeposits, 10_000);
+setInterval(monitorDeposits, 30_000);
 
 // Debug endpoint: manually trigger deposit check
 app.get('/api/admin/check-deposits', async (_req, res) => {
