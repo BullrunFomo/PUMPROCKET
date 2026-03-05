@@ -1710,7 +1710,6 @@ document.querySelectorAll('.bq').forEach(btn => {
     if (action === 'point1') input.value = '0.1';
     if (action === 'point2') input.value = '0.2';
     if (action === 'point5') input.value = '0.5';
-    updateBetUsd();
   });
 });
 
@@ -1816,7 +1815,6 @@ function updateBalanceDisplay() {
   document.getElementById('headerBalanceVal').textContent = S.balance.toFixed(4);
   const accountVal = document.getElementById('accountBalanceVal');
   if (accountVal) accountVal.textContent = S.balance.toFixed(4);
-  updateBetUsd();
 }
 function setStatus(msg, type = 'info') {
   const el = document.getElementById('betStatus');
