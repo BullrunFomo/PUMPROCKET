@@ -1095,8 +1095,8 @@
         </div>
         <div class="bet-quick">
           <button class="bq" data-action="point1">0.1 SOL</button>
-          <button class="bq" data-action="one">1 SOL</button>
-          <button class="bq" data-action="max">MAX</button>
+          <button class="bq" data-action="point2">0.2 SOL</button>
+          <button class="bq" data-action="point5">0.5 SOL</button>
         </div>
 
         <div class="bet-amount-row">
@@ -1325,12 +1325,13 @@ function renderPlayers() {
     row.className = `player-row ${statusClass}`;
     const isMe = myKey && wallet === myKey;
     const displayName = isMe && profile.username ? profile.username : wallet;
+    const safeDisplayName = escapeHtml(displayName);
     let avatarHtml;
     if (isMe && profile.photo) {
-      avatarHtml = `<div class="player-avatar" style="overflow:hidden;border-radius:8px"><img src="${profile.photo}" style="width:100%;height:100%;object-fit:cover;display:block"></div>`;
+      avatarHtml = `<div class="player-avatar" style="overflow:hidden;border-radius:8px"><img src="${escapeHtml(profile.photo)}" style="width:100%;height:100%;object-fit:cover;display:block"></div>`;
     } else {
       const color = avatarColor(isMe && profile.username ? profile.username : wallet);
-      const initials = isMe && profile.username ? profile.username.slice(0,2).toUpperCase() : avatarInitials(wallet);
+      const initials = escapeHtml(isMe && profile.username ? profile.username.slice(0,2).toUpperCase() : avatarInitials(wallet));
       avatarHtml = `<div class="player-avatar" style="background:${color}">${initials}</div>`;
     }
     let statusHtml = '';
@@ -1340,12 +1341,17 @@ function renderPlayers() {
     row.innerHTML = `
       ${avatarHtml}
       <div class="player-info">
-        <div class="player-name">${displayName}</div>
+        <div class="player-name">${safeDisplayName}</div>
         <div class="player-amount">${SOL_SVG}${p.amount.toFixed(4)}</div>
       </div>
       ${statusHtml}`;
     list.appendChild(row);
   });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -1360,19 +1366,21 @@ function addChatMessage(name, level, text, highlightWord, photo) {
   const container = document.getElementById('chatMessages');
   const msg = document.createElement('div');
   msg.className = 'chat-msg';
+  const safeName = escapeHtml(name);
   const color = chatColor(name);
-  const initials = name.slice(0, 2).toUpperCase();
-  let textHtml = text;
+  const initials = escapeHtml(name.slice(0, 2).toUpperCase());
+  let textHtml = escapeHtml(text);
   if (highlightWord) {
-    textHtml = text.replace(highlightWord, `<span class="hl">${highlightWord}</span>`);
+    const safeHW = escapeHtml(highlightWord);
+    textHtml = textHtml.replace(safeHW, `<span class="hl">${safeHW}</span>`);
   }
   const avatarHtml = photo
-    ? `<div class="chat-avatar" style="overflow:hidden"><img src="${photo}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block"></div>`
+    ? `<div class="chat-avatar" style="overflow:hidden"><img src="${escapeHtml(photo)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block"></div>`
     : `<div class="chat-avatar" style="background:${color}">${initials}</div>`;
   msg.innerHTML = `
     ${avatarHtml}
     <div class="chat-body">
-      <div class="chat-name" style="color:${color}">${name}</div>
+      <div class="chat-name" style="color:${color}">${safeName}</div>
       <div class="chat-text">${textHtml}</div>
     </div>`;
   container.appendChild(msg);
@@ -1482,6 +1490,11 @@ function crashRocket() {
 
 // ─── Socket.IO ───────────────────────────────────────────────────────────────
 const socket = io();
+
+// Re-register wallet on every (re)connect — fires before any other events
+socket.on('connect', () => {
+  if (S.wallet) socket.emit('register', { wallet: S.wallet });
+});
 
 socket.on('chatHistory', msgs => msgs.forEach(m => addChatMessage(m.name, 1, m.text, null, m.photo)));
 socket.on('chatMessage', m => addChatMessage(m.name, 1, m.text, null, m.photo));
@@ -1613,22 +1626,12 @@ socket.on('playerCashedOut', ({ wallet, multiplier }) => {
 });
 
 // ─── Wallet Connect ──────────────────────────────────────────────────────────
-async function updateNetworkBadge(phantom) {
+function updateNetworkBadge() {
   const label = document.getElementById('networkBadgeLabel');
-  if (S.serverNetwork === 'demo') {
-    label.textContent = '◉ Offchain - Demo Mode';
-    label.style.color = '#aaa';
-    return;
-  }
-  try {
-    const hash = await phantom.request({ method: 'getGenesisHash' });
-    const isMainnet = hash === '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
-    label.textContent = isMainnet ? '◉ Onchain - Mainnet' : '◉ Onchain - Devnet';
-    label.style.color = '#00E4A2';
-  } catch {
-    label.textContent = '◉ Onchain - Devnet';
-    label.style.color = '#00E4A2';
-  }
+  const n = S.serverNetwork;
+  if (n === 'demo')    { label.textContent = '◉ Offchain - Demo Mode'; label.style.color = '#aaa'; }
+  else if (n === 'mainnet') { label.textContent = '◉ Onchain - Mainnet'; label.style.color = '#00E4A2'; }
+  else                 { label.textContent = '◉ Onchain - Devnet';  label.style.color = '#00E4A2'; }
 }
 
 document.getElementById('connectWallet').addEventListener('click', async () => {
@@ -1666,7 +1669,7 @@ document.getElementById('connectWallet').addEventListener('click', async () => {
   applyProfile();
   fetchProfileFromServer(S.wallet);
   socket.emit('register', { wallet: S.wallet });
-  updateNetworkBadge(phantom);
+  updateNetworkBadge();
 });
 
 async function fetchProfileFromServer(wallet) {
@@ -1704,8 +1707,8 @@ document.querySelectorAll('.bq').forEach(btn => {
     const cur   = parseFloat(input.value) || 0;
     const action = btn.dataset.action;
     if (action === 'point1') input.value = '0.1';
-    if (action === 'one')    input.value = '1';
-    if (action === 'max')    input.value = S.balance > 0 ? S.balance.toFixed(4).replace(/\.?0+$/, '') : '0.1';
+    if (action === 'point2') input.value = '0.2';
+    if (action === 'point5') input.value = '0.5';
     updateBetUsd();
   });
 });
@@ -1858,7 +1861,7 @@ function updateNavBadge(history) {
 function applyProfile() {
   const inner = document.getElementById('headerProfileAvatar');
   if (profile.photo) {
-    inner.innerHTML = `<img src="${profile.photo}" alt="avatar">`;
+    inner.innerHTML = `<img src="${escapeHtml(profile.photo)}" alt="avatar">`;
     inner.style.background = '';
   } else {
     const name = profile.username || (S.wallet ? S.wallet.slice(0, 2) : '??');
@@ -1872,7 +1875,7 @@ function updateModalPreview() {
   const preview = document.getElementById('profileAvatarPreview');
   const name = (document.getElementById('profileUsernameInput').value.trim() || profile.username || 'YO');
   if (profile.photo) {
-    preview.innerHTML = `<img src="${profile.photo}" alt="avatar"><div class="avatar-overlay">Change</div>`;
+    preview.innerHTML = `<img src="${escapeHtml(profile.photo)}" alt="avatar"><div class="avatar-overlay">Change</div>`;
     preview.style.background = '';
     preview.style.color = '';
   } else {
@@ -2000,24 +2003,42 @@ document.getElementById('withdrawBtn').addEventListener('click', async () => {
   if (amount > S.balance) { statusEl.textContent = 'Insufficient balance'; statusEl.className = 'error'; return; }
 
   btn.disabled = true;
-  statusEl.textContent = 'Sending…';
+  statusEl.textContent = 'Waiting for signature…';
   statusEl.className = 'info';
 
   try {
+    const lamports = Math.round(amount * 1e9);
+
+    // 1. Get a one-time nonce from the server
+    const nonceResp = await fetch(`/api/withdraw-nonce?wallet=${encodeURIComponent(S.wallet)}`);
+    const { nonce } = await nonceResp.json();
+    if (!nonce) throw new Error('Failed to get nonce');
+
+    // 2. Sign the withdrawal message with Phantom (proves wallet ownership)
+    const message = `pumprocket-withdraw:${S.wallet}:${lamports}:${nonce}`;
+    const encodedMsg = new TextEncoder().encode(message);
+    const phantom = window.phantom?.solana;
+    if (!phantom?.isConnected) throw new Error('Phantom not connected');
+    const { signature: sigBytes } = await phantom.signMessage(encodedMsg, 'utf8');
+    const signature = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    statusEl.textContent = 'Sending…';
+
+    // 3. Submit withdrawal with signature
     const resp = await fetch('/api/withdraw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: S.wallet, amount_lamports: Math.round(amount * 1e9) }),
+      body: JSON.stringify({ wallet: S.wallet, amount_lamports: lamports, signature, nonce }),
     });
     const data = await resp.json();
     if (!resp.ok) { statusEl.textContent = data.error || 'Withdrawal failed'; statusEl.className = 'error'; return; }
-    statusEl.innerHTML = `✓ Sent! <a href="https://solscan.io/tx/${data.signature}" target="_blank" rel="noopener" style="color:var(--accent)">View tx</a>`;
+    statusEl.innerHTML = `✓ Sent! <a href="https://solscan.io/tx/${escapeHtml(data.signature)}" target="_blank" rel="noopener" style="color:var(--accent)">View tx</a>`;
     statusEl.className = 'success';
     amtInput.value = '';
     // Balance updated via balanceUpdate socket event
     document.getElementById('accountBalanceVal').textContent = (data.balance_lamports / 1e9).toFixed(4);
   } catch (e) {
-    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.textContent = e.message === 'User rejected the request.' ? 'Signature cancelled' : 'Error: ' + e.message;
     statusEl.className = 'error';
   } finally {
     btn.disabled = false;

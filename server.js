@@ -3,6 +3,7 @@ const express = require('express');
 const http    = require('http');
 const { Server } = require('socket.io');
 const cors   = require('cors');
+const helmet = require('helmet');
 const crypto = require('crypto');
 const path   = require('path');
 const fs     = require('fs');
@@ -28,12 +29,16 @@ if (process.env.AUTHORITY_KEYPAIR) {
 console.log('🏦 House wallet:', authority.publicKey.toString());
 
 // ─── Express + Socket.IO ──────────────────────────────────────────────────────
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || false; // set to your domain in production
+const ADMIN_SECRET   = process.env.ADMIN_SECRET   || null;  // set in .env to protect admin endpoints
+
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
+const io     = new Server(server, { cors: { origin: ALLOWED_ORIGIN || false } });
 
-app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(helmet({ contentSecurityPolicy: false })); // CSP disabled so inline scripts in index.html still work
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || false })); // false = same-origin only; set ALLOWED_ORIGIN in prod
+app.use(express.json({ limit: '100kb' })); // tighten body limit
 
 app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/docs',       (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
@@ -43,7 +48,7 @@ app.get('/disclaimer', (_req, res) => res.sendFile(path.join(__dirname, 'disclai
 app.get('/api/profile/:wallet', async (req, res) => {
   if (!db) return res.json({});
   const { data, error } = await db.from('users').select('wallet,username,photo_url,total_bets,total_won,biggest_win').eq('wallet', req.params.wallet).maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: 'Failed to fetch profile' });
   res.json(data || {});
 });
 
@@ -51,11 +56,16 @@ app.post('/api/profile', async (req, res) => {
   if (!db) return res.json({ ok: true });
   const { wallet, username, photo_url } = req.body;
   if (!wallet) return res.status(400).json({ error: 'wallet required' });
+  // Validate photo_url: must be http/https or empty
+  if (photo_url && !/^https?:\/\//i.test(photo_url)) {
+    return res.status(400).json({ error: 'Invalid photo URL' });
+  }
+  const safeUsername = typeof username === 'string' ? username.slice(0, 32) : '';
   const { error } = await db.from('users').upsert(
-    { wallet, username, photo_url, last_seen: new Date().toISOString() },
+    { wallet, username: safeUsername, photo_url: photo_url || null, last_seen: new Date().toISOString() },
     { onConflict: 'wallet' }
   );
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: 'Profile update failed' });
   res.json({ ok: true });
 });
 
@@ -79,6 +89,20 @@ app.get('/api/deposit-address', (_req, res) => {
   res.json({ address: authority.publicKey.toString() });
 });
 
+// ─── Withdrawal nonce store (prevents replay attacks) ─────────────────────────
+const withdrawNonces = new Map(); // `${wallet}:${nonce}` → expiry timestamp
+
+app.get('/api/withdraw-nonce', (req, res) => {
+  const { wallet } = req.query;
+  if (!wallet) return res.status(400).json({ error: 'wallet required' });
+  try { new PublicKey(wallet); } catch { return res.status(400).json({ error: 'Invalid wallet' }); }
+  const nonce = crypto.randomBytes(16).toString('hex');
+  withdrawNonces.set(`${wallet}:${nonce}`, Date.now() + 5 * 60 * 1000); // 5 min expiry
+  // Prune expired nonces
+  for (const [k, exp] of withdrawNonces) if (Date.now() > exp) withdrawNonces.delete(k);
+  res.json({ nonce });
+});
+
 // Query a wallet's current balance (in lamports)
 app.get('/api/balance', async (req, res) => {
   if (!db) return res.json({ balance_lamports: 0 });
@@ -87,15 +111,15 @@ app.get('/api/balance', async (req, res) => {
   try {
     const balance_lamports = await db.getBalance(wallet);
     res.json({ balance_lamports });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch balance' });
   }
 });
 
 // Withdraw SOL from the user's account to their wallet
 app.post('/api/withdraw', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not configured' });
-  const { wallet, amount_lamports } = req.body;
+  const { wallet, amount_lamports, signature, nonce } = req.body;
   if (!wallet || !amount_lamports) return res.status(400).json({ error: 'wallet and amount_lamports required' });
 
   const lamports = parseInt(amount_lamports);
@@ -106,6 +130,29 @@ app.post('/api/withdraw', async (req, res) => {
   let destPubkey;
   try { destPubkey = new PublicKey(wallet); } catch {
     return res.status(400).json({ error: 'Invalid wallet address' });
+  }
+
+  // Verify one-time nonce
+  if (!nonce || !signature) return res.status(401).json({ error: 'Signature required' });
+  const nonceKey = `${wallet}:${nonce}`;
+  const nonceExpiry = withdrawNonces.get(nonceKey);
+  if (!nonceExpiry || Date.now() > nonceExpiry) {
+    return res.status(401).json({ error: 'Invalid or expired nonce' });
+  }
+  withdrawNonces.delete(nonceKey); // one-time use
+
+  // Verify Ed25519 signature from Phantom (signMessage returns Uint8Array)
+  try {
+    const message = `pumprocket-withdraw:${wallet}:${lamports}:${nonce}`;
+    const msgBytes = Buffer.from(message, 'utf8');
+    const sigBytes = Buffer.from(signature, 'hex');
+    const DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+    const derPub = Buffer.concat([DER_PREFIX, Buffer.from(destPubkey.toBytes())]);
+    const pubKey = crypto.createPublicKey({ key: derPub, format: 'der', type: 'spki' });
+    const valid = crypto.verify(null, msgBytes, pubKey, sigBytes);
+    if (!valid) return res.status(401).json({ error: 'Signature verification failed' });
+  } catch {
+    return res.status(401).json({ error: 'Signature verification failed' });
   }
 
   // 1. Atomic debit — throws if balance is insufficient
@@ -294,6 +341,7 @@ function processCashOut(wallet) {
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 const walletSockets = {};
 const chatHistory   = [];
+const chatRates     = new Map(); // socketId → { count, resetAt }
 
 (async () => {
   if (!db) return;
@@ -335,7 +383,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('placeBet', async ({ wallet, amount, autoCashOut }) => {
-    if (!wallet)  return socket.emit('betError', 'No wallet provided.');
+    if (!wallet || walletSockets[wallet] !== socket.id) return socket.emit('betError', 'Wallet not registered to this session.');
     amount = parseFloat(amount);
     if (!amount || amount <= 0 || isNaN(amount)) return socket.emit('betError', 'Invalid amount.');
     if (game.phase !== 'waiting')  return socket.emit('betError', 'Betting is closed. Wait for next round.');
@@ -371,8 +419,8 @@ io.on('connection', (socket) => {
     io.emit('betPlaced', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), amount });
   });
 
-  socket.on('cashOut', ({ wallet }) => {
-    if (!wallet) return socket.emit('cashOutError', 'No wallet.');
+  socket.on('cashOut', ({ wallet } = {}) => {
+    if (!wallet || walletSockets[wallet] !== socket.id) return socket.emit('cashOutError', 'Wallet not registered to this session.');
     if (game.phase !== 'flying')  return socket.emit('cashOutError', 'Game not in progress.');
     const bet = game.bets[wallet];
     if (!bet)          return socket.emit('cashOutError', 'No active bet found.');
@@ -388,7 +436,15 @@ io.on('connection', (socket) => {
 
   socket.on('chatMessage', ({ name, text, photo }) => {
     if (!text || typeof text !== 'string') return;
-    const msg = { name: String(name || 'Anon').slice(0, 32), text: text.slice(0, 200), photo: photo || null, ts: Date.now() };
+    // Rate limit: max 2 messages per 3 seconds
+    const now = Date.now();
+    let rate = chatRates.get(socket.id) || { count: 0, resetAt: now + 3000 };
+    if (now > rate.resetAt) { rate.count = 0; rate.resetAt = now + 3000; }
+    rate.count++;
+    chatRates.set(socket.id, rate);
+    if (rate.count > 2) return;
+    const safePhoto = (typeof photo === 'string' && /^https?:\/\//i.test(photo)) ? photo : null;
+    const msg = { name: String(name || 'Anon').slice(0, 32), text: text.slice(0, 200), photo: safePhoto, ts: Date.now() };
     chatHistory.push(msg);
     if (chatHistory.length > 50) chatHistory.shift();
     io.emit('chatMessage', msg);
@@ -396,6 +452,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    chatRates.delete(socket.id);
     for (const [w, sid] of Object.entries(walletSockets)) {
       if (sid === socket.id) delete walletSockets[w];
     }
@@ -458,8 +515,11 @@ async function monitorDeposits() {
 monitorDeposits();
 setInterval(monitorDeposits, 30_000);
 
-// Debug endpoint: manually trigger deposit check
-app.get('/api/admin/check-deposits', async (_req, res) => {
+// Debug endpoint: manually trigger deposit check (protected by ADMIN_SECRET if set)
+app.get('/api/admin/check-deposits', async (req, res) => {
+  if (ADMIN_SECRET && req.headers['x-admin-secret'] !== ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   await monitorDeposits();
   res.json({ ok: true });
 });
