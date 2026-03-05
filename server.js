@@ -462,66 +462,138 @@ io.on('connection', (socket) => {
 });
 
 // ─── Deposit Monitor ──────────────────────────────────────────────────────────
+// Cursor tracks the newest signature we've ever seen — restored from DB on startup
+// so server restarts never lose progress.
+let depositCursor = null;
+
+(async () => {
+  if (!db) return;
+  const { data } = await db.from('processed_deposits')
+    .select('signature')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (data?.[0]) {
+    depositCursor = data[0].signature;
+    console.log('[deposits] cursor restored:', depositCursor.slice(0, 12));
+  }
+})();
+
+// Process a single transaction signature — credits balance if it's a valid deposit.
+// Returns true if a deposit was credited.
+async function processSignature(signature) {
+  const already = await db.isDepositProcessed(signature);
+  if (already) return false;
+
+  const tx = await connection.getTransaction(signature, {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0,
+  });
+  if (!tx || tx.meta?.err) return false;
+
+  const houseKey = authority.publicKey.toString();
+  const rawKeys  = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys || [];
+  const accounts = rawKeys.map(k => (typeof k.toString === 'function' ? k.toString() : String(k)));
+
+  const houseIdx = accounts.indexOf(houseKey);
+  if (houseIdx === -1) return false;
+
+  const received = tx.meta.postBalances[houseIdx] - tx.meta.preBalances[houseIdx];
+  if (received < 1_000_000) return false; // dust
+
+  const sender = accounts[0];
+  if (sender === houseKey) return false; // outgoing
+
+  console.log(`[deposits] crediting ${(received / 1e9).toFixed(6)} SOL to ${sender.slice(0, 8)}... (${signature.slice(0, 12)})`);
+  await db.recordDeposit(signature, sender, received);
+
+  const socketId = walletSockets[sender];
+  if (socketId) {
+    const balance_lamports = await db.getBalance(sender);
+    io.to(socketId).emit('balanceUpdate', { balance_lamports });
+  }
+  return true;
+}
+
+// Normal poll: only fetches signatures newer than the cursor — no limit on history.
 async function monitorDeposits() {
   if (!db) return;
   try {
-    const sigs = await connection.getSignaturesForAddress(authority.publicKey, { limit: 100 });
-    // Filter out failed txs immediately — no RPC call needed, err is in the sig info
+    const opts = { limit: 1000 };
+    if (depositCursor) opts.until = depositCursor; // only fetch what's new
+
+    const sigs = await connection.getSignaturesForAddress(authority.publicKey, opts);
+    if (sigs.length === 0) return;
+
+    // Advance cursor to the newest signature seen (deposit or not)
+    depositCursor = sigs[0].signature;
+
     const successSigs = sigs.filter(s => !s.err);
-    console.log(`[deposits] checking ${successSigs.length}/${sigs.length} successful signatures`);
+    console.log(`[deposits] ${successSigs.length} new signatures since last check`);
+    for (const { signature } of successSigs) await processSignature(signature);
+  } catch (e) {
+    console.error('[deposits] Monitor error:', e.message);
+  }
+}
 
-    for (const { signature } of successSigs) {
-      const already = await db.isDepositProcessed(signature);
-      if (already) continue;
+// Full backfill: paginates through ALL history, stops after finding 20 consecutive
+// already-processed signatures (meaning we've caught up with known history).
+async function backfillDeposits() {
+  if (!db) return;
+  console.log('[deposits] Starting full backfill...');
+  let before;
+  let totalCredited = 0;
+  let consecutiveProcessed = 0;
 
-      const tx = await connection.getTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0,
-      });
-      if (!tx) { console.log(`[deposits] tx not found: ${signature.slice(0,12)}`); continue; }
-      if (tx.meta?.err) continue; // double-check
+  try {
+    while (true) {
+      const opts = { limit: 1000 };
+      if (before) opts.before = before;
 
-      const houseKey = authority.publicKey.toString();
-      const rawKeys  = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys || [];
-      const accounts = rawKeys.map(k => (typeof k.toString === 'function' ? k.toString() : String(k)));
-      console.log(`[deposits] sig ${signature.slice(0,12)} accounts:`, accounts.slice(0, 3));
+      const sigs = await connection.getSignaturesForAddress(authority.publicKey, opts);
+      if (sigs.length === 0) break;
 
-      const houseIdx = accounts.indexOf(houseKey);
-      if (houseIdx === -1) { console.log(`[deposits] house wallet not in accounts, skipping`); continue; }
+      // On the very first batch, advance cursor to newest seen
+      if (!before && sigs[0]) depositCursor = sigs[0].signature;
 
-      const received = tx.meta.postBalances[houseIdx] - tx.meta.preBalances[houseIdx];
-      console.log(`[deposits] received by house: ${received} lamports`);
-      if (received < 1_000_000) { console.log(`[deposits] dust, skipping`); continue; }
-
-      const sender = accounts[0];
-      if (sender === houseKey) { console.log(`[deposits] outgoing tx, skipping`); continue; }
-
-      console.log(`[deposits] crediting ${(received / 1e9).toFixed(6)} SOL to ${sender.slice(0, 8)}...`);
-      await db.recordDeposit(signature, sender, received);
-      console.log(`[deposit] ✓ credited!`);
-
-      const socketId = walletSockets[sender];
-      if (socketId) {
-        const balance_lamports = await db.getBalance(sender);
-        io.to(socketId).emit('balanceUpdate', { balance_lamports });
+      for (const { signature, err } of sigs) {
+        if (err) { consecutiveProcessed = 0; continue; }
+        const credited = await processSignature(signature);
+        if (credited) {
+          totalCredited++;
+          consecutiveProcessed = 0;
+        } else {
+          consecutiveProcessed++;
+          // Once we hit 20 consecutive already-processed sigs we've caught up
+          if (consecutiveProcessed >= 20) break;
+        }
       }
+
+      if (consecutiveProcessed >= 20 || sigs.length < 1000) break;
+      before = sigs[sigs.length - 1].signature; // paginate older
     }
   } catch (e) {
-    console.error('[deposits] Monitor error:', e.message, e.stack);
+    console.error('[deposits] Backfill error:', e.message);
   }
+
+  console.log(`[deposits] Backfill complete. Credited: ${totalCredited}`);
+  return totalCredited;
 }
 
 // Run immediately on startup, then every 30 seconds
 monitorDeposits();
 setInterval(monitorDeposits, 30_000);
 
-// Debug endpoint: manually trigger deposit check (protected by ADMIN_SECRET if set)
+// Admin endpoint: normal check, or full historical backfill with ?full=true
 app.get('/api/admin/check-deposits', async (req, res) => {
   if (ADMIN_SECRET && req.headers['x-admin-secret'] !== ADMIN_SECRET) {
     return res.status(403).json({ error: 'Forbidden' });
   }
+  if (req.query.full === 'true') {
+    const credited = await backfillDeposits();
+    return res.json({ ok: true, mode: 'backfill', credited });
+  }
   await monitorDeposits();
-  res.json({ ok: true });
+  res.json({ ok: true, mode: 'incremental' });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

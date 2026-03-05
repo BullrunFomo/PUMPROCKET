@@ -1081,7 +1081,6 @@
 
         <div class="bet-amount-row">
           <span class="field-label">Bet Amount</span>
-          <span class="bet-usd" id="betUsd">($0.00)</span>
         </div>
         <div class="input-wrap">
           <span class="prefix">
@@ -1634,32 +1633,23 @@ function updateNetworkBadge() {
   else                 { label.textContent = '◉ Onchain - Devnet';  label.style.color = '#00E4A2'; }
 }
 
-document.getElementById('connectWallet').addEventListener('click', async () => {
-  const btn = document.getElementById('connectWallet');
-
-  // When connected, clicking the pill opens the profile modal
-  if (S.wallet) {
-    document.getElementById('profileUsernameInput').value = profile.username;
-    updateModalPreview();
-    document.getElementById('profileModalOverlay').classList.remove('hidden');
-    return;
-  }
-
+async function connectWallet(silent = false) {
   const phantom = window.phantom?.solana || window.solana;
   if (!phantom?.isPhantom) {
-    setStatus('Phantom wallet not found. Install it at phantom.app', 'error');
+    if (!silent) setStatus('Phantom wallet not found. Install it at phantom.app', 'error');
     return;
   }
 
   try {
-    const resp = await phantom.connect();
+    const resp = await phantom.connect(silent ? { onlyIfTrusted: true } : undefined);
     S.wallet  = resp.publicKey.toString();
     S.balance = 0; // will be updated by balanceUpdate event after register
   } catch {
-    setStatus('Wallet connection rejected', 'error');
+    if (!silent) setStatus('Wallet connection rejected', 'error');
     return;
   }
 
+  const btn = document.getElementById('connectWallet');
   const short = S.wallet.slice(0, 4) + '…' + S.wallet.slice(-4);
   document.getElementById('walletPillLabel').textContent = short;
   btn.classList.add('connected');
@@ -1670,6 +1660,17 @@ document.getElementById('connectWallet').addEventListener('click', async () => {
   fetchProfileFromServer(S.wallet);
   socket.emit('register', { wallet: S.wallet });
   updateNetworkBadge();
+}
+
+document.getElementById('connectWallet').addEventListener('click', async () => {
+  // When already connected, clicking the pill opens the profile modal
+  if (S.wallet) {
+    document.getElementById('profileUsernameInput').value = profile.username;
+    updateModalPreview();
+    document.getElementById('profileModalOverlay').classList.remove('hidden');
+    return;
+  }
+  await connectWallet(false);
 });
 
 async function fetchProfileFromServer(wallet) {
@@ -1712,13 +1713,6 @@ document.querySelectorAll('.bq').forEach(btn => {
     updateBetUsd();
   });
 });
-document.getElementById('betAmount').addEventListener('input', updateBetUsd);
-
-function updateBetUsd() {
-  const amt = parseFloat(document.getElementById('betAmount').value) || 0;
-  // $22 per SOL placeholder rate for display
-  document.getElementById('betUsd').textContent = `($${(amt * 22).toFixed(2)})`;
-}
 
 // ─── UI Helpers ──────────────────────────────────────────────────────────────
 function updateBetUI() {
@@ -2048,6 +2042,8 @@ document.getElementById('withdrawBtn').addEventListener('click', async () => {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 setTimeout(resizeCanvas, 100);
 applyProfile();
+// Auto-reconnect if user previously approved this site — restores balance without manual click
+connectWallet(true);
 
 </script>
 </body>
