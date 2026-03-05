@@ -1896,7 +1896,26 @@ document.getElementById('profilePhotoInput').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = evt => { profile.photo = evt.target.result; updateModalPreview(); };
+  reader.onload = async evt => {
+    const base64 = evt.target.result;
+    profile.photo = base64;
+    updateModalPreview();
+    if (!S.wallet) return;
+    try {
+      const r = await fetch('/api/upload-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: S.wallet, imageBase64: base64 }),
+      });
+      const data = await r.json();
+      if (data.url) {
+        profile.photo = data.url;
+        localStorage.setItem('profilePhoto', data.url);
+        updateModalPreview();
+        applyProfile();
+      }
+    } catch {}
+  };
   reader.readAsDataURL(file);
   e.target.value = '';
 });

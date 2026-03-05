@@ -44,6 +44,34 @@ app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'index.ht
 app.get('/docs',       (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
 app.get('/disclaimer', (_req, res) => res.sendFile(path.join(__dirname, 'disclaimer.html')));
 
+// ─── Avatar Upload ────────────────────────────────────────────────────────────
+app.post('/api/upload-avatar', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'DB unavailable' });
+  const { wallet, imageBase64 } = req.body;
+  if (!wallet || !imageBase64) return res.status(400).json({ error: 'wallet and imageBase64 required' });
+
+  // Validate base64 data URL
+  const match = imageBase64.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: 'Invalid image format' });
+
+  const mimeType = match[1];
+  const ext = match[2] === 'jpeg' ? 'jpg' : match[2];
+  const buffer = Buffer.from(match[3], 'base64');
+
+  // Limit to 2MB
+  if (buffer.length > 2 * 1024 * 1024) return res.status(400).json({ error: 'Image too large (max 2MB)' });
+
+  const fileName = `${wallet}.${ext}`;
+  const { error } = await db.storage.from('avatars').upload(fileName, buffer, {
+    contentType: mimeType,
+    upsert: true,
+  });
+  if (error) return res.status(500).json({ error: 'Upload failed' });
+
+  const { data: { publicUrl } } = db.storage.from('avatars').getPublicUrl(fileName);
+  res.json({ url: publicUrl });
+});
+
 // ─── Profile API ──────────────────────────────────────────────────────────────
 app.get('/api/profile/:wallet', async (req, res) => {
   if (!db) return res.json({});
