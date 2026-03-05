@@ -243,7 +243,7 @@ let game = {
 // ─── House Edge Config ────────────────────────────────────────────────────────
 const HOUSE_EDGE         = 0.01;  // 1% baked into crash point distribution
 const CASHOUT_FEE        = 0.01;  // 1% fee on every cashout payout
-const FEE_WALLET         = '35HsLa2JTKMaZBTNNvdfRdYQbd3FrFvFvsqSdBSDXuJC';
+const FEE_WALLET         = 'DjGYTPqUvFvCMR3qneDN3dBg6EezeRF5ssj2T7turi4d';
 const FEE_SWEEP_THRESHOLD = 100_000_000; // sweep when 0.1 SOL accumulated
 let   pendingFeeLamports = 0;
 let   totalFeesCollected = 0;
