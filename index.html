@@ -1945,7 +1945,7 @@ document.getElementById('profileSaveBtn').addEventListener('click', async () => 
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo }),
+      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo?.startsWith('http') ? profile.photo : null }),
     }).catch(() => {});
   }
 });
