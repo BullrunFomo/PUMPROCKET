@@ -241,10 +241,36 @@ let game = {
 };
 
 // ─── House Edge Config ────────────────────────────────────────────────────────
-const HOUSE_EDGE  = 0.01;  // 1% baked into crash point distribution
-const CASHOUT_FEE = 0.01;  // 1% fee on every cashout payout
-const FEE_WALLET  = '35HsLa2JTKMaZBTNNvdfRdYQbd3FrFvFvsqSdBSDXuJC';
+const HOUSE_EDGE         = 0.01;  // 1% baked into crash point distribution
+const CASHOUT_FEE        = 0.01;  // 1% fee on every cashout payout
+const FEE_WALLET         = '35HsLa2JTKMaZBTNNvdfRdYQbd3FrFvFvsqSdBSDXuJC';
+const FEE_SWEEP_THRESHOLD = 100_000_000; // sweep when 0.1 SOL accumulated
+let   pendingFeeLamports = 0;
 let   totalFeesCollected = 0;
+
+async function sweepFees() {
+  if (pendingFeeLamports < FEE_SWEEP_THRESHOLD) return;
+  const amount = pendingFeeLamports;
+  pendingFeeLamports = 0; // reset before sending to avoid double-sweep
+  try {
+    const dest = new PublicKey(FEE_WALLET);
+    const tx = new Transaction().add(
+      SystemProgram.transfer({ fromPubkey: authority.publicKey, toPubkey: dest, lamports: BigInt(amount) })
+    );
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = authority.publicKey;
+    tx.sign(authority);
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+    console.log(`[fees] swept ${(amount / 1e9).toFixed(4)} SOL → ${FEE_WALLET} | tx: ${sig}`);
+  } catch (e) {
+    console.error('[fees] sweep failed:', e.message);
+    pendingFeeLamports += amount; // refund on failure
+  }
+}
+
+// Sweep every hour regardless of threshold
+setInterval(async () => { if (pendingFeeLamports > 0) await sweepFees(); }, 60 * 60 * 1000);
 
 // ─── Provably Fair ────────────────────────────────────────────────────────────
 function generateCrashPoint() {
@@ -342,11 +368,14 @@ function processCashOut(wallet) {
 
   bet.cashedOut = true;
   bet.cashOutAt = game.multiplier;
-  const gross   = bet.amount * game.multiplier;
-  const fee     = parseFloat((gross * CASHOUT_FEE).toFixed(6));
-  bet.payout    = parseFloat((gross - fee).toFixed(6));
+  const gross      = bet.amount * game.multiplier;
+  const fee        = parseFloat((gross * CASHOUT_FEE).toFixed(6));
+  bet.payout       = parseFloat((gross - fee).toFixed(6));
+  const feeLamports = Math.round(fee * 1e9);
+  pendingFeeLamports += feeLamports;
   totalFeesCollected += fee;
-  console.log(`[fees] +${fee.toFixed(4)} SOL → ${FEE_WALLET} (total: ${totalFeesCollected.toFixed(4)} SOL)`);
+  console.log(`[fees] +${fee.toFixed(4)} SOL pending (total pending: ${(pendingFeeLamports / 1e9).toFixed(4)} SOL)`);
+  sweepFees(); // sweep if threshold reached
 
   // Credit the payout to the player's account (non-blocking — speed is critical here)
   if (db) {
