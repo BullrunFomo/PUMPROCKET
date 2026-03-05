@@ -38,7 +38,7 @@ const io     = new Server(server, { cors: { origin: ALLOWED_ORIGIN || false } })
 
 app.use(helmet({ contentSecurityPolicy: false })); // CSP disabled so inline scripts in index.html still work
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || false })); // false = same-origin only; set ALLOWED_ORIGIN in prod
-app.use(express.json({ limit: '100kb' })); // tighten body limit
+app.use(express.json({ limit: '10mb' })); // 10mb to allow base64 avatar uploads
 
 app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/docs',       (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
