@@ -84,10 +84,9 @@ app.post('/api/profile', async (req, res) => {
   if (!db) return res.json({ ok: true });
   const { wallet, username, photo_url } = req.body;
   if (!wallet) return res.status(400).json({ error: 'wallet required' });
-  // Validate photo_url: must be http/https or empty
-  if (photo_url && !/^https?:\/\//i.test(photo_url)) {
-    return res.status(400).json({ error: 'Invalid photo URL' });
-  }
+  // Validate photo_url: must be http/https URL or small data URL (thumbnail)
+  const validPhoto = !photo_url || /^https?:\/\//i.test(photo_url) || (/^data:image\/(png|jpeg|gif|webp);base64,/.test(photo_url) && photo_url.length < 30000);
+  if (!validPhoto) return res.status(400).json({ error: 'Invalid photo URL' });
   const safeUsername = typeof username === 'string' ? username.slice(0, 32) : '';
   const { error } = await db.from('users').upsert(
     { wallet, username: safeUsername, photo_url: photo_url || null, last_seen: new Date().toISOString() },
@@ -471,7 +470,7 @@ io.on('connection', (socket) => {
     rate.count++;
     chatRates.set(socket.id, rate);
     if (rate.count > 2) return;
-    const safePhoto = (typeof photo === 'string' && /^https?:\/\//i.test(photo)) ? photo : null;
+    const safePhoto = (typeof photo === 'string' && (/^https?:\/\//i.test(photo) || (/^data:image\/(png|jpeg|gif|webp);base64,/.test(photo) && photo.length < 30000))) ? photo : null;
     const msg = { name: String(name || 'Anon').slice(0, 32), text: text.slice(0, 200), photo: safePhoto, ts: Date.now() };
     chatHistory.push(msg);
     if (chatHistory.length > 50) chatHistory.shift();

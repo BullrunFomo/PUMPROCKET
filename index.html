@@ -1896,25 +1896,22 @@ document.getElementById('profilePhotoInput').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async evt => {
-    const base64 = evt.target.result;
-    profile.photo = base64;
-    updateModalPreview();
-    if (!S.wallet) return;
-    try {
-      const r = await fetch('/api/upload-avatar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: S.wallet, imageBase64: base64 }),
-      });
-      const data = await r.json();
-      if (data.url) {
-        profile.photo = data.url;
-        localStorage.setItem('profilePhoto', data.url);
-        updateModalPreview();
-        applyProfile();
-      }
-    } catch {}
+  reader.onload = evt => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      // crop to square from center
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2, sy = (img.height - size) / 2;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 64, 64);
+      profile.photo = canvas.toDataURL('image/jpeg', 0.7);
+      localStorage.setItem('profilePhoto', profile.photo);
+      updateModalPreview();
+      applyProfile();
+    };
+    img.src = evt.target.result;
   };
   reader.readAsDataURL(file);
   e.target.value = '';
@@ -1945,7 +1942,7 @@ document.getElementById('profileSaveBtn').addEventListener('click', async () => 
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo?.startsWith('http') ? profile.photo : null }),
+      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo || null }),
     }).catch(() => {});
   }
 });
