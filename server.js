@@ -28,6 +28,13 @@ if (process.env.AUTHORITY_KEYPAIR) {
 }
 console.log('🏦 House wallet:', authority.publicKey.toString());
 
+// ─── Security checks ──────────────────────────────────────────────────────────
+if (!process.env.HOUSE_SECRET || process.env.HOUSE_SECRET === 'CHANGE_ME_IN_PRODUCTION') {
+  console.error('FATAL: HOUSE_SECRET env var is not set or still uses the default value.');
+  console.error('Set a strong random secret in your .env file: HOUSE_SECRET=<random string>');
+  process.exit(1);
+}
+
 // ─── Express + Socket.IO ──────────────────────────────────────────────────────
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || false; // set to your domain in production
 const ADMIN_SECRET   = process.env.ADMIN_SECRET   || null;  // set in .env to protect admin endpoints
@@ -47,8 +54,14 @@ app.get('/disclaimer', (_req, res) => res.sendFile(path.join(__dirname, 'disclai
 // ─── Avatar Upload ────────────────────────────────────────────────────────────
 app.post('/api/upload-avatar', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'DB unavailable' });
-  const { wallet, imageBase64 } = req.body;
+  const { wallet, imageBase64, token } = req.body;
   if (!wallet || !imageBase64) return res.status(400).json({ error: 'wallet and imageBase64 required' });
+
+  // Require a valid session token proving the caller owns this wallet
+  const session = token ? sessionTokens[token] : null;
+  if (!session || session.wallet !== wallet || Date.now() > session.expires) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   // Validate base64 data URL
   const match = imageBase64.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.+)$/);
@@ -82,8 +95,15 @@ app.get('/api/profile/:wallet', async (req, res) => {
 
 app.post('/api/profile', async (req, res) => {
   if (!db) return res.json({ ok: true });
-  const { wallet, username, photo_url } = req.body;
+  const { wallet, username, photo_url, token } = req.body;
   if (!wallet) return res.status(400).json({ error: 'wallet required' });
+
+  // Require a valid session token proving the caller owns this wallet
+  const session = token ? sessionTokens[token] : null;
+  if (!session || session.wallet !== wallet || Date.now() > session.expires) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   // Validate photo_url: must be http/https URL or small data URL (thumbnail)
   const validPhoto = !photo_url || /^https?:\/\//i.test(photo_url) || (/^data:image\/(png|jpeg|gif|webp);base64,/.test(photo_url) && photo_url.length < 30000);
   if (!validPhoto) return res.status(400).json({ error: 'Invalid photo URL' });
@@ -93,6 +113,8 @@ app.post('/api/profile', async (req, res) => {
     { onConflict: 'wallet' }
   );
   if (error) return res.status(500).json({ error: 'Profile update failed' });
+  // Keep in-memory profile cache fresh
+  playerProfiles.set(wallet, { username: safeUsername || null, photo: photo_url || null });
   res.json({ ok: true });
 });
 
@@ -319,7 +341,7 @@ setInterval(async () => { if (pendingFeeLamports > 0) await sweepFees(); }, 60 *
 function generateCrashPoint() {
   const salt = crypto.randomBytes(32);
   const seed = `${game.roundId}-${Date.now()}-${salt.toString('hex')}`;
-  const hash = crypto.createHmac('sha256', process.env.HOUSE_SECRET || 'CHANGE_ME_IN_PRODUCTION').update(seed).digest('hex');
+  const hash = crypto.createHmac('sha256', process.env.HOUSE_SECRET).update(seed).digest('hex');
   const h    = parseInt(hash.slice(0, 8), 16);
   const e    = Math.pow(2, 32);
   const raw  = Math.floor(((1 - HOUSE_EDGE) * 100 * e - h) / (e - h)) / 100;
@@ -445,8 +467,20 @@ function processCashOut(wallet) {
 const walletSockets    = {};
 const socketChallenges = {}; // socketId → nonce (for register auth)
 const sessionTokens    = {}; // token → { wallet, expires }
+// LRU cache capped at 10,000 entries — Map preserves insertion order so the
+// first key is always the least-recently-used entry to evict.
+function makeLRU(maxSize) {
+  const map = new Map();
+  return {
+    get(key)      { return map.get(key); },
+    set(key, val) { map.delete(key); map.set(key, val); if (map.size > maxSize) map.delete(map.keys().next().value); },
+    has(key)      { return map.has(key); },
+  };
+}
+const playerProfiles = makeLRU(10_000); // wallet → { username, photo }
 const chatHistory      = [];
 const chatRates        = new Map(); // socketId → { count, resetAt }
+const registerRates    = new Map(); // socketId → { count, resetAt }
 
 // Clean up expired session tokens hourly
 setInterval(() => {
@@ -484,12 +518,17 @@ io.on('connection', (socket) => {
     // Send current round's active bets so players panel is restored on refresh
     activeBets:  Object.entries(game.bets)
       .filter(([, b]) => !b.lost)
-      .map(([w, b]) => ({
-        wallet:    w.slice(0, 6) + '...' + w.slice(-4),
-        amount:    b.amount,
-        cashedOut: b.cashedOut,
-        cashOutAt: b.cashOutAt || null,
-      })),
+      .map(([w, b]) => {
+        const prof = playerProfiles.get(w) || {};
+        return {
+          wallet:    w.slice(0, 6) + '...' + w.slice(-4),
+          amount:    b.amount,
+          cashedOut: b.cashedOut,
+          cashOutAt: b.cashOutAt || null,
+          username:  prof.username || null,
+          photo:     prof.photo    || null,
+        };
+      }),
   });
 
   if (chatHistory.length > 0) socket.emit('chatHistory', chatHistory);
@@ -498,14 +537,24 @@ io.on('connection', (socket) => {
   socket.on('register', async ({ wallet, signature, nonce, token } = {}) => {
     if (!wallet) return;
 
-    // Auth is optional — enhances security when provided but never blocks registration.
-    // walletSockets[wallet] === socket.id on placeBet/cashOut prevents active session hijacking.
+    // Rate limit: max 5 register attempts per minute per socket
+    const _now = Date.now();
+    let rr = registerRates.get(socket.id) || { count: 0, resetAt: _now + 60_000 };
+    if (_now > rr.resetAt) { rr.count = 0; rr.resetAt = _now + 60_000; }
+    rr.count++;
+    registerRates.set(socket.id, rr);
+    if (rr.count > 5) return;
+
+    // Track whether this socket proved it owns the wallet (signed nonce or valid session token).
+    // Required to overwrite an existing active session — prevents cashout DoS via session hijacking.
+    let authenticated = false;
+
     if (token) {
       const session = sessionTokens[token];
       if (session && session.wallet === wallet && Date.now() <= session.expires) {
         session.expires = Date.now() + 24 * 60 * 60 * 1000; // refresh TTL
+        authenticated = true;
       }
-      // (invalid/expired token → just continue without elevated auth)
     } else if (signature && nonce && socketChallenges[socket.id] === nonce) {
       try {
         const message  = `pumprocket-register:${wallet}:${nonce}`;
@@ -515,11 +564,21 @@ io.on('connection', (socket) => {
         const derPub = Buffer.concat([DER_PREFIX, Buffer.from(new PublicKey(wallet).toBytes())]);
         const pubKey = crypto.createPublicKey({ key: derPub, format: 'der', type: 'spki' });
         if (crypto.verify(null, msgBytes, pubKey, sigBytes)) {
+          authenticated = true;
           const newToken = crypto.randomBytes(32).toString('hex');
           sessionTokens[newToken] = { wallet, expires: Date.now() + 24 * 60 * 60 * 1000 };
           socket.emit('sessionToken', { token: newToken });
         }
       } catch { /* ignore — unauthenticated fallback */ }
+    }
+
+    // Guard against session hijacking: if another active socket already owns this wallet,
+    // only allow the overwrite if ownership was proved above.
+    // Page refresh is safe: the disconnect handler removes walletSockets[wallet] before
+    // the new socket arrives, so the slot is empty and no auth is required.
+    const existingSocket = walletSockets[wallet];
+    if (existingSocket && existingSocket !== socket.id && !authenticated) {
+      return; // Reject — cannot displace an authenticated session without proof
     }
 
     walletSockets[wallet] = socket.id;
@@ -558,6 +617,11 @@ io.on('connection', (socket) => {
 
     if (db) {
       db.from('users').upsert({ wallet, last_seen: new Date().toISOString() }, { onConflict: 'wallet' }).then(() => {});
+      // Cache profile (awaited so it's ready before the player can place a bet)
+      try {
+        const { data: prof } = await db.from('users').select('username,photo_url').eq('wallet', wallet).maybeSingle();
+        if (prof) playerProfiles.set(wallet, { username: prof.username || null, photo: prof.photo_url || null });
+      } catch {}
       try {
         const balance_lamports = await db.getBalance(wallet);
         socket.emit('balanceUpdate', { balance_lamports });
@@ -608,7 +672,15 @@ io.on('connection', (socket) => {
     }
 
     if (db) db.rpc('track_bet', { p_wallet: wallet }).then(() => {});
-    io.emit('betPlaced', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), amount });
+    // Fallback: fetch profile now if still not cached (e.g. register race)
+    if (db && !playerProfiles.has(wallet)) {
+      try {
+        const { data: prof } = await db.from('users').select('username,photo_url').eq('wallet', wallet).maybeSingle();
+        if (prof) playerProfiles.set(wallet, { username: prof.username || null, photo: prof.photo_url || null });
+      } catch {}
+    }
+    const prof = playerProfiles.get(wallet) || {};
+    io.emit('betPlaced', { wallet: wallet.slice(0, 6) + '...' + wallet.slice(-4), amount, username: prof.username || null, photo: prof.photo || null });
   });
 
   socket.on('cashOut', ({ wallet } = {}) => {
@@ -645,6 +717,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     chatRates.delete(socket.id);
+    registerRates.delete(socket.id);
     delete socketChallenges[socket.id];
     for (const [w, sid] of Object.entries(walletSockets)) {
       if (sid === socket.id) delete walletSockets[w];
@@ -778,7 +851,7 @@ setInterval(monitorDeposits, 30_000);
 
 // Admin endpoint: normal check, or full historical backfill with ?full=true
 app.get('/api/admin/check-deposits', async (req, res) => {
-  if (ADMIN_SECRET && req.headers['x-admin-secret'] !== ADMIN_SECRET) {
+  if (!ADMIN_SECRET || req.headers['x-admin-secret'] !== ADMIN_SECRET) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   if (req.query.full === 'true') {

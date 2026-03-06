@@ -1276,9 +1276,13 @@ const S = {
   graphPoints: [],
 };
 
-// Restore bet state synchronously before any async code runs.
-// init handler will clear it if the roundId no longer matches.
+// Restore wallet + bet state synchronously before any async code runs.
+// Wallet restore means doRegister() fires immediately on 'challenge' so
+// betRestored arrives and updateBetUI() can show the cashout button.
+// init handler will clear the bet if the roundId no longer matches.
 try {
+  const _w = localStorage.getItem('crashWallet');
+  if (_w) S.wallet = _w;
   const _ab = JSON.parse(localStorage.getItem('activeBet') || 'null');
   if (_ab && _ab.amount) {
     S.myBet       = _ab.amount;
@@ -1298,10 +1302,15 @@ function profileDisplayName() {
 }
 
 // ─── Player tracking ─────────────────────────────────────────────────────────
-const playersMap = new Map(); // wallet -> { amount, status: 'playing'|'cashed'|'lost', mult }
+const playersMap = new Map(); // wallet -> { amount, status: 'playing'|'cashed'|'lost', mult, username, photo }
 
-function addOrUpdatePlayer(wallet, amount, status, mult) {
-  playersMap.set(wallet, { amount, status, mult });
+function addOrUpdatePlayer(wallet, amount, status, mult, username, photo) {
+  const existing = playersMap.get(wallet) || {};
+  playersMap.set(wallet, {
+    amount, status, mult,
+    username: username || existing.username || null,
+    photo:    photo    || existing.photo    || null,
+  });
   renderPlayers();
 }
 function clearPlayers() {
@@ -1335,14 +1344,16 @@ function renderPlayers() {
     const statusClass = p.status === 'playing' ? 'status-playing' : p.status === 'cashed' ? 'status-cashed' : 'status-lost';
     row.className = `player-row ${statusClass}`;
     const isMe = myKey && wallet === myKey;
-    const displayName = isMe && profile.username ? profile.username : wallet;
+    const displayUsername = isMe ? profile.username : (p.username || null);
+    const displayPhoto    = isMe ? profile.photo    : (p.photo    || null);
+    const displayName = displayUsername || wallet;
     const safeDisplayName = escapeHtml(displayName);
     let avatarHtml;
-    if (isMe && profile.photo) {
-      avatarHtml = `<div class="player-avatar" style="overflow:hidden;border-radius:8px"><img src="${escapeHtml(profile.photo)}" style="width:100%;height:100%;object-fit:cover;display:block"></div>`;
+    if (displayPhoto) {
+      avatarHtml = `<div class="player-avatar" style="overflow:hidden;border-radius:8px"><img src="${escapeHtml(displayPhoto)}" style="width:100%;height:100%;object-fit:cover;display:block"></div>`;
     } else {
-      const color = avatarColor(isMe && profile.username ? profile.username : wallet);
-      const initials = escapeHtml(isMe && profile.username ? profile.username.slice(0,2).toUpperCase() : avatarInitials(wallet));
+      const color = avatarColor(displayUsername || wallet);
+      const initials = escapeHtml(displayUsername ? displayUsername.slice(0,2).toUpperCase() : avatarInitials(wallet));
       avatarHtml = `<div class="player-avatar" style="background:${color}">${initials}</div>`;
     }
     let statusHtml = '';
@@ -1581,7 +1592,7 @@ socket.on('init', (data) => {
   if (data.activeBets && data.activeBets.length) {
     clearPlayers();
     data.activeBets.forEach(b => {
-      addOrUpdatePlayer(b.wallet, b.amount, b.cashedOut ? 'cashed' : 'playing', b.cashOutAt || null);
+      addOrUpdatePlayer(b.wallet, b.amount, b.cashedOut ? 'cashed' : 'playing', b.cashOutAt || null, b.username || null, b.photo || null);
     });
   }
 
@@ -1685,7 +1696,7 @@ socket.on('betRestored', ({ amount, autoCashOut, cashedOut, cashOutAt, payout })
   // Make sure we appear in the players panel
   if (S.wallet) {
     const short = S.wallet.slice(0, 6) + '...' + S.wallet.slice(-4);
-    addOrUpdatePlayer(short, S.myBet, cashedOut ? 'cashed' : 'playing', cashOutAt || null);
+    addOrUpdatePlayer(short, S.myBet, cashedOut ? 'cashed' : 'playing', cashOutAt || null, profile.username || null, profile.photo || null);
   }
   updateBetUI();
 });
@@ -1707,8 +1718,8 @@ socket.on('cashedOut', ({ multiplier, payout, amount }) => {
   hidePayout();
 });
 
-socket.on('betPlaced', ({ wallet, amount }) => {
-  addOrUpdatePlayer(wallet || '???', parseFloat(amount) || 0, 'playing', null);
+socket.on('betPlaced', ({ wallet, amount, username, photo }) => {
+  addOrUpdatePlayer(wallet || '???', parseFloat(amount) || 0, 'playing', null, username || null, photo || null);
 });
 socket.on('playerCashedOut', ({ wallet, multiplier }) => {
   if (playersMap.has(wallet || '???')) {
@@ -1737,6 +1748,7 @@ async function connectWallet(silent = false) {
   try {
     const resp = await phantom.connect(silent ? { onlyIfTrusted: true } : undefined);
     S.wallet  = resp.publicKey.toString();
+    localStorage.setItem('crashWallet', S.wallet);
     S.balance = 0; // will be updated by balanceUpdate event after register
   } catch {
     if (!silent) setStatus('Wallet connection rejected', 'error');
@@ -1804,8 +1816,46 @@ document.getElementById('betBtn').addEventListener('click', () => {
 });
 
 // ─── Cash Out ────────────────────────────────────────────────────────────────
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+}
+function playCashSound() {
+  try {
+    const ctx = getAudioCtx();
+    ctx.resume().then(() => {
+      const t = ctx.currentTime;
+      // Three rising coin tones
+      [[0, 660, 880], [0.1, 880, 1100], [0.2, 1100, 1320]].forEach(([delay, f0, f1]) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f0, t + delay);
+        osc.frequency.linearRampToValueAtTime(f1, t + delay + 0.08);
+        gain.gain.setValueAtTime(0.5, t + delay);
+        gain.gain.linearRampToValueAtTime(0, t + delay + 0.22);
+        osc.start(t + delay);
+        osc.stop(t + delay + 0.25);
+      });
+      // Short white-noise "ching" burst at the end
+      const bufLen = Math.floor(ctx.sampleRate * 0.05);
+      const buf    = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+      const data   = buf.getChannelData(0);
+      for (let j = 0; j < bufLen; j++) data[j] = (Math.random() * 2 - 1) * (1 - j / bufLen);
+      const src = ctx.createBufferSource();
+      const gn  = ctx.createGain();
+      src.buffer = buf; src.connect(gn); gn.connect(ctx.destination);
+      gn.gain.setValueAtTime(0.6, t + 0.28);
+      src.start(t + 0.28);
+    });
+  } catch {}
+}
+
 document.getElementById('cashOutBtn').addEventListener('click', () => {
   if (!S.wallet || !S.myBet || S.myCashedOut) return;
+  playCashSound();
   socket.emit('cashOut', { wallet: S.wallet });
 });
 
@@ -2027,6 +2077,7 @@ document.getElementById('profilePhotoInput').addEventListener('change', e => {
 
 document.getElementById('disconnectWalletBtn').addEventListener('click', () => {
   S.wallet = null; S.balance = 0;
+  localStorage.removeItem('crashWallet');
   const btn = document.getElementById('connectWallet');
   btn.classList.remove('connected');
   document.getElementById('walletPillLabel').textContent = 'Connect Wallet';
@@ -2050,7 +2101,7 @@ document.getElementById('profileSaveBtn').addEventListener('click', async () => 
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo || null }),
+      body: JSON.stringify({ wallet: S.wallet, username: profile.username, photo_url: profile.photo || null, token: _sessionToken || undefined }),
     }).catch(() => {});
   }
 });
