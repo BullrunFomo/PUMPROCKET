@@ -1276,6 +1276,17 @@ const S = {
   graphPoints: [],
 };
 
+// Restore bet state synchronously before any async code runs.
+// init handler will clear it if the roundId no longer matches.
+try {
+  const _ab = JSON.parse(localStorage.getItem('activeBet') || 'null');
+  if (_ab && _ab.amount) {
+    S.myBet       = _ab.amount;
+    S.myCashedOut = _ab.cashedOut  || false;
+    S.cashOutMult = _ab.cashOutAt  || null;
+  }
+} catch {}
+
 // ─── Profile State ───────────────────────────────────────────────────────────
 const profile = {
   username: localStorage.getItem('profileUsername') || '',
@@ -1545,13 +1556,12 @@ socket.on('init', (data) => {
   updateNavBadge(data.history);
   S.serverNetwork = data.network || 'devnet';
 
-  // Restore bet from localStorage if it belongs to this round
+  // Validate the restored bet: clear it if the round has moved on
   try {
     const stored = JSON.parse(localStorage.getItem('activeBet') || 'null');
-    if (stored && stored.roundId === data.roundId && !S.myBet) {
-      S.myBet       = stored.amount;
-      S.myCashedOut = stored.cashedOut || false;
-      S.cashOutMult = stored.cashOutAt || null;
+    if (stored && stored.roundId !== data.roundId) {
+      S.myBet = null; S.myCashedOut = false; S.cashOutMult = null;
+      localStorage.removeItem('activeBet');
     }
   } catch {}
 
@@ -1652,12 +1662,15 @@ socket.on('betConfirmed', ({ amount }) => {
 // Restore bet state after a page refresh mid-round
 socket.on('betRestored', ({ amount, autoCashOut, cashedOut, cashOutAt, payout }) => {
   S.myBet = parseFloat(amount);
+  S.myCashedOut = cashedOut;
+  S.cashOutMult = cashOutAt;
+  localStorage.setItem('activeBet', JSON.stringify({
+    amount: S.myBet, roundId: S.roundId,
+    cashedOut, cashOutAt: cashOutAt || null, payout: payout || null,
+  }));
   if (cashedOut) {
-    S.myCashedOut = true;
-    S.cashOutMult = cashOutAt;
     setStatus(`🎉 Cashed out @ ${cashOutAt}× — +${parseFloat(payout).toFixed(4)} SOL`, 'success');
   } else {
-    S.myCashedOut = false;
     setStatus(`✓ Bet active: ${S.myBet.toFixed(4)} SOL`, 'success');
   }
   updateBetUI();
