@@ -1576,6 +1576,15 @@ socket.on('init', (data) => {
     hideCountdown();
     setMultiplierUI(data.multiplier, 'crashed');
   }
+
+  // Restore players panel from current round's bets sent by server
+  if (data.activeBets && data.activeBets.length) {
+    clearPlayers();
+    data.activeBets.forEach(b => {
+      addOrUpdatePlayer(b.wallet, b.amount, b.cashedOut ? 'cashed' : 'playing', b.cashOutAt || null);
+    });
+  }
+
   updateBetUI();
 });
 
@@ -1672,6 +1681,11 @@ socket.on('betRestored', ({ amount, autoCashOut, cashedOut, cashOutAt, payout })
     setStatus(`🎉 Cashed out @ ${cashOutAt}× — +${parseFloat(payout).toFixed(4)} SOL`, 'success');
   } else {
     setStatus(`✓ Bet active: ${S.myBet.toFixed(4)} SOL`, 'success');
+  }
+  // Make sure we appear in the players panel
+  if (S.wallet) {
+    const short = S.wallet.slice(0, 6) + '...' + S.wallet.slice(-4);
+    addOrUpdatePlayer(short, S.myBet, cashedOut ? 'cashed' : 'playing', cashOutAt || null);
   }
   updateBetUI();
 });

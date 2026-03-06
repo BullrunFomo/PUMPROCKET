@@ -64,9 +64,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 4. Active bets (in-progress bets, used to restore state on page refresh)
+CREATE TABLE IF NOT EXISTS active_bets (
+  wallet           TEXT        PRIMARY KEY,
+  amount_sol       NUMERIC     NOT NULL,
+  amount_lamports  BIGINT      NOT NULL,
+  round_id         INTEGER     NOT NULL,
+  auto_cash_out    NUMERIC,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE active_bets DISABLE ROW LEVEL SECURITY;
+
 -- Optional: indexes for faster lookups
 CREATE INDEX IF NOT EXISTS idx_transactions_wallet ON transactions(wallet);
 CREATE INDEX IF NOT EXISTS idx_processed_deposits_wallet ON processed_deposits(wallet);
+CREATE INDEX IF NOT EXISTS idx_active_bets_round ON active_bets(round_id);
 
 -- ─── RLS + permissions ────────────────────────────────────────────────────────
 -- These tables are server-only (never accessed by the browser directly),

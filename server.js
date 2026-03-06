@@ -227,21 +227,43 @@ app.get('/api/state',   (_req, res) => res.json({ phase: game.phase, roundId: ga
 app.get('/api/history', (_req, res) => res.json({ history: game.history }));
 
 // Returns the wallet's active bet for the current round (used to restore UI on page refresh)
-app.get('/api/active-bet', (req, res) => {
+app.get('/api/active-bet', async (req, res) => {
   const { wallet } = req.query;
   if (!wallet) return res.json({ active: false });
+
+  // In-memory check (authoritative for the current server session)
   const bet = game.bets[wallet];
-  if (!bet || bet.lost) return res.json({ active: false });
-  res.json({
-    active:      true,
-    amount:      bet.amount,
-    cashedOut:   bet.cashedOut,
-    cashOutAt:   bet.cashOutAt   || null,
-    payout:      bet.payout      || null,
-    autoCashOut: bet.autoCashOut || null,
-    roundId:     game.roundId,
-  });
+  if (bet && !bet.lost) {
+    return res.json({
+      active:      true,
+      amount:      bet.amount,
+      cashedOut:   bet.cashedOut,
+      cashOutAt:   bet.cashOutAt  || null,
+      payout:      bet.payout     || null,
+      autoCashOut: bet.autoCashOut || null,
+      roundId:     game.roundId,
+    });
+  }
+
+  // DB fallback (handles cases where game.bets was cleared)
+  if (!db || game.phase !== 'flying') return res.json({ active: false });
+  try {
+    const dbBet = await db.getActiveBet(wallet);
+    if (!dbBet || dbBet.round_id !== game.roundId) return res.json({ active: false });
+    return res.json({
+      active:      true,
+      amount:      parseFloat(dbBet.amount_sol),
+      cashedOut:   false,
+      cashOutAt:   null,
+      payout:      null,
+      autoCashOut: dbBet.auto_cash_out ? parseFloat(dbBet.auto_cash_out) : null,
+      roundId:     dbBet.round_id,
+    });
+  } catch { return res.json({ active: false }); }
 });
+
+// Clear any stale active_bets left over from a previous server session
+if (db) db.clearAllActiveBets().catch(e => console.warn('[db] clearAllActiveBets on start:', e.message));
 
 // ─── Game State ───────────────────────────────────────────────────────────────
 let game = {
@@ -379,6 +401,8 @@ function doCrash() {
       if (db) db.logTransaction(wallet, 'loss', Math.round(bet.amount * 1e9), String(game.roundId)).catch(() => {});
     }
   }
+  // Remove all active bets from DB (round is over)
+  if (db) db.clearAllActiveBets().catch(() => {});
 
   io.emit('crashed', { crashPoint: cp, history: [...game.history] });
   game.roundId++;
@@ -391,6 +415,7 @@ function processCashOut(wallet) {
 
   bet.cashedOut = true;
   bet.cashOutAt = game.multiplier;
+  if (db) db.removeActiveBet(wallet).catch(() => {});
   const gross      = bet.amount * game.multiplier;
   const fee        = parseFloat((gross * CASHOUT_FEE).toFixed(6));
   bet.payout       = parseFloat((gross - fee).toFixed(6));
@@ -451,12 +476,21 @@ io.on('connection', (socket) => {
 
   const networkMode = !db ? 'demo' : SOLANA_RPC.includes('mainnet') ? 'mainnet' : 'devnet';
   socket.emit('init', {
-    phase:      game.phase,
-    roundId:    game.roundId,
-    multiplier: game.multiplier,
-    countdown:  game.countdown,
-    history:    [...game.history],
-    network:    networkMode,
+    phase:       game.phase,
+    roundId:     game.roundId,
+    multiplier:  game.multiplier,
+    countdown:   game.countdown,
+    history:     [...game.history],
+    network:     networkMode,
+    // Send current round's active bets so players panel is restored on refresh
+    activeBets:  Object.entries(game.bets)
+      .filter(([, b]) => !b.lost)
+      .map(([w, b]) => ({
+        wallet:    w.slice(0, 6) + '...' + w.slice(-4),
+        amount:    b.amount,
+        cashedOut: b.cashedOut,
+        cashOutAt: b.cashOutAt || null,
+      })),
   });
 
   if (chatHistory.length > 0) socket.emit('chatHistory', chatHistory);
@@ -501,6 +535,26 @@ io.on('connection', (socket) => {
         cashOutAt:   activeBet.cashOutAt  || null,
         payout:      activeBet.payout     || null,
       });
+    } else if (db && game.phase === 'flying') {
+      // DB fallback: bet may have been placed in this round before a server restart
+      try {
+        const dbBet = await db.getActiveBet(wallet);
+        if (dbBet && dbBet.round_id === game.roundId) {
+          // Rebuild in-memory bet so cashOut works
+          game.bets[wallet] = {
+            amount:      parseFloat(dbBet.amount_sol),
+            cashedOut:   false,
+            autoCashOut: dbBet.auto_cash_out ? parseFloat(dbBet.auto_cash_out) : null,
+          };
+          socket.emit('betRestored', {
+            amount:      parseFloat(dbBet.amount_sol),
+            autoCashOut: game.bets[wallet].autoCashOut,
+            cashedOut:   false,
+            cashOutAt:   null,
+            payout:      null,
+          });
+        }
+      } catch (e) { console.error('[register] DB bet restore failed:', e.message); }
     }
 
     if (db) {
@@ -540,6 +594,9 @@ io.on('connection', (socket) => {
       cashedOut:   false,
       autoCashOut: autoCashOut && parseFloat(autoCashOut) >= 1.01 ? parseFloat(autoCashOut) : null,
     };
+
+    // Persist active bet to DB so it survives page refresh and server restart
+    if (db) db.saveActiveBet(wallet, amount, lamports, game.roundId, game.bets[wallet].autoCashOut).catch(() => {});
 
     socket.emit('betConfirmed', { amount, autoCashOut: game.bets[wallet].autoCashOut });
 

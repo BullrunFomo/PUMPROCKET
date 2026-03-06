@@ -66,6 +66,32 @@ if (!url || !key) {
     await this.logTransaction(wallet, 'deposit', lamports, signature);
   };
 
+  // ─── Active bet tracking ──────────────────────────────────────────────────
+
+  db.saveActiveBet = async function (wallet, amountSol, amountLamports, roundId, autoCashOut) {
+    const { error } = await this.from('active_bets').upsert(
+      { wallet, amount_sol: amountSol, amount_lamports: amountLamports, round_id: roundId, auto_cash_out: autoCashOut || null, created_at: new Date().toISOString() },
+      { onConflict: 'wallet' }
+    );
+    if (error) throw new Error(error.message);
+  };
+
+  db.removeActiveBet = async function (wallet) {
+    const { error } = await this.from('active_bets').delete().eq('wallet', wallet);
+    if (error) throw new Error(error.message);
+  };
+
+  db.clearAllActiveBets = async function () {
+    const { error } = await this.from('active_bets').delete().gte('amount_lamports', 0);
+    if (error) throw new Error(error.message);
+  };
+
+  db.getActiveBet = async function (wallet) {
+    const { data, error } = await this.from('active_bets').select('*').eq('wallet', wallet).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  };
+
   // ─── Audit trail ─────────────────────────────────────────────────────────
 
   db.logTransaction = async function (wallet, type, lamports, reference = null) {
