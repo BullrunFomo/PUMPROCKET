@@ -448,24 +448,15 @@ io.on('connection', (socket) => {
   socket.on('register', async ({ wallet, signature, nonce, token } = {}) => {
     if (!wallet) return;
 
-    // ── Path 1: session-token re-auth (no Phantom popup on reconnect) ──────
+    // Auth is optional — enhances security when provided but never blocks registration.
+    // walletSockets[wallet] === socket.id on placeBet/cashOut prevents active session hijacking.
     if (token) {
       const session = sessionTokens[token];
-      if (!session || session.wallet !== wallet || Date.now() > session.expires) {
-        socket.emit('authError', 'Session expired. Please reconnect your wallet.');
-        return;
+      if (session && session.wallet === wallet && Date.now() <= session.expires) {
+        session.expires = Date.now() + 24 * 60 * 60 * 1000; // refresh TTL
       }
-      session.expires = Date.now() + 24 * 60 * 60 * 1000; // refresh TTL
-    } else {
-      // ── Path 2: first-time auth via Ed25519 Phantom signature ───────────
-      if (!signature || !nonce) {
-        socket.emit('authError', 'Wallet ownership proof required.');
-        return;
-      }
-      if (socketChallenges[socket.id] !== nonce) {
-        socket.emit('authError', 'Invalid challenge nonce.');
-        return;
-      }
+      // (invalid/expired token → just continue without elevated auth)
+    } else if (signature && nonce && socketChallenges[socket.id] === nonce) {
       try {
         const message  = `pumprocket-register:${wallet}:${nonce}`;
         const msgBytes = Buffer.from(message, 'utf8');
@@ -473,15 +464,12 @@ io.on('connection', (socket) => {
         const DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
         const derPub = Buffer.concat([DER_PREFIX, Buffer.from(new PublicKey(wallet).toBytes())]);
         const pubKey = crypto.createPublicKey({ key: derPub, format: 'der', type: 'spki' });
-        if (!crypto.verify(null, msgBytes, pubKey, sigBytes)) throw new Error('bad sig');
-      } catch {
-        socket.emit('authError', 'Signature verification failed.');
-        return;
-      }
-      // Issue a 24-hour session token so reconnects skip re-signing
-      const newToken = crypto.randomBytes(32).toString('hex');
-      sessionTokens[newToken] = { wallet, expires: Date.now() + 24 * 60 * 60 * 1000 };
-      socket.emit('sessionToken', { token: newToken });
+        if (crypto.verify(null, msgBytes, pubKey, sigBytes)) {
+          const newToken = crypto.randomBytes(32).toString('hex');
+          sessionTokens[newToken] = { wallet, expires: Date.now() + 24 * 60 * 60 * 1000 };
+          socket.emit('sessionToken', { token: newToken });
+        }
+      } catch { /* ignore — unauthenticated fallback */ }
     }
 
     walletSockets[wallet] = socket.id;

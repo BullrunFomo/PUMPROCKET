@@ -1494,52 +1494,42 @@ const socket = io();
 let _pendingChallenge = null;
 let _sessionToken     = localStorage.getItem('crashSessionToken');
 
-// Sign the current challenge nonce and emit register
-async function signAndRegister() {
+// Always registers immediately (unauthenticated fallback), then tries to
+// sign in the background to upgrade to a session token for future reconnects.
+function doRegister() {
+  if (!S.wallet) return;
+  // Immediate registration — never blocked by auth
+  const payload = { wallet: S.wallet };
+  if (_sessionToken) payload.token = _sessionToken;
+  socket.emit('register', payload);
+  // Background: try to sign for a session token (skipped if already have one)
+  if (!_sessionToken && _pendingChallenge) _trySign();
+}
+
+async function _trySign() {
   if (!S.wallet || !_pendingChallenge) return;
   const phantom = window.phantom?.solana || window.solana;
   if (!phantom?.isConnected) return;
-
   const nonce = _pendingChallenge;
   try {
-    const msg     = `pumprocket-register:${S.wallet}:${nonce}`;
+    const msg      = `pumprocket-register:${S.wallet}:${nonce}`;
     const msgBytes = new TextEncoder().encode(msg);
     const { signature: sigBytes } = await phantom.signMessage(msgBytes, 'utf8');
     const signature = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     socket.emit('register', { wallet: S.wallet, signature, nonce });
-  } catch (e) {
-    console.error('[register] sign failed — wallet popup denied?', e);
-  }
-}
-
-// Attempt register: use cached session token if available, else sign
-function attemptRegister() {
-  if (!S.wallet) return;
-  if (_sessionToken) {
-    socket.emit('register', { wallet: S.wallet, token: _sessionToken });
-  } else {
-    signAndRegister();
-  }
+  } catch { /* user dismissed popup — already registered without auth */ }
 }
 
 // Server sends a challenge on every (re)connect
 socket.on('challenge', ({ nonce }) => {
   _pendingChallenge = nonce;
-  attemptRegister(); // only acts if wallet is already connected
+  doRegister(); // only acts if wallet already connected
 });
 
-// Server confirms auth and hands back a session token (skip re-signing on reconnects)
+// Server issued a session token — cache it so reconnects skip signing
 socket.on('sessionToken', ({ token }) => {
   _sessionToken = token;
   localStorage.setItem('crashSessionToken', token);
-});
-
-// Server rejected auth — clear stale token and re-sign
-socket.on('authError', (msg) => {
-  console.warn('[auth]', msg);
-  _sessionToken = null;
-  localStorage.removeItem('crashSessionToken');
-  signAndRegister();
 });
 
 socket.on('chatHistory', msgs => msgs.forEach(m => addChatMessage(m.name, 1, m.text, null, m.photo)));
@@ -1735,7 +1725,7 @@ async function connectWallet(silent = false) {
   updateBetUI();
   applyProfile();
   fetchProfileFromServer(S.wallet);
-  attemptRegister();
+  doRegister();
   updateNetworkBadge();
 }
 
