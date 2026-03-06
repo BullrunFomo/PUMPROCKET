@@ -444,6 +444,7 @@
     #betBtn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
     #cashOutBtn {
       display: none;
+      margin-top: 16px;
       background: linear-gradient(135deg, #00E4A2 0%, #00c48e 100%);
       color: #060f09;
       animation: pulseGreen 1.1s ease-in-out infinite;
@@ -1490,9 +1491,55 @@ function crashRocket() {
 // ─── Socket.IO ───────────────────────────────────────────────────────────────
 const socket = io();
 
-// Re-register wallet on every (re)connect — fires before any other events
-socket.on('connect', () => {
-  if (S.wallet) socket.emit('register', { wallet: S.wallet });
+let _pendingChallenge = null;
+let _sessionToken     = localStorage.getItem('crashSessionToken');
+
+// Sign the current challenge nonce and emit register
+async function signAndRegister() {
+  if (!S.wallet || !_pendingChallenge) return;
+  const phantom = window.phantom?.solana || window.solana;
+  if (!phantom?.isConnected) return;
+
+  const nonce = _pendingChallenge;
+  try {
+    const msg     = `pumprocket-register:${S.wallet}:${nonce}`;
+    const msgBytes = new TextEncoder().encode(msg);
+    const { signature: sigBytes } = await phantom.signMessage(msgBytes, 'utf8');
+    const signature = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    socket.emit('register', { wallet: S.wallet, signature, nonce });
+  } catch (e) {
+    console.error('[register] sign failed — wallet popup denied?', e);
+  }
+}
+
+// Attempt register: use cached session token if available, else sign
+function attemptRegister() {
+  if (!S.wallet) return;
+  if (_sessionToken) {
+    socket.emit('register', { wallet: S.wallet, token: _sessionToken });
+  } else {
+    signAndRegister();
+  }
+}
+
+// Server sends a challenge on every (re)connect
+socket.on('challenge', ({ nonce }) => {
+  _pendingChallenge = nonce;
+  attemptRegister(); // only acts if wallet is already connected
+});
+
+// Server confirms auth and hands back a session token (skip re-signing on reconnects)
+socket.on('sessionToken', ({ token }) => {
+  _sessionToken = token;
+  localStorage.setItem('crashSessionToken', token);
+});
+
+// Server rejected auth — clear stale token and re-sign
+socket.on('authError', (msg) => {
+  console.warn('[auth]', msg);
+  _sessionToken = null;
+  localStorage.removeItem('crashSessionToken');
+  signAndRegister();
 });
 
 socket.on('chatHistory', msgs => msgs.forEach(m => addChatMessage(m.name, 1, m.text, null, m.photo)));
@@ -1507,6 +1554,16 @@ socket.on('init', (data) => {
   updateHistory(data.history);
   updateNavBadge(data.history);
   S.serverNetwork = data.network || 'devnet';
+
+  // Restore bet from localStorage if it belongs to this round
+  try {
+    const stored = JSON.parse(localStorage.getItem('activeBet') || 'null');
+    if (stored && stored.roundId === data.roundId && !S.myBet) {
+      S.myBet       = stored.amount;
+      S.myCashedOut = stored.cashedOut || false;
+      S.cashOutMult = stored.cashOutAt || null;
+    }
+  } catch {}
 
   if (data.phase === 'waiting') {
     showCountdown(data.countdown);
@@ -1529,6 +1586,7 @@ socket.on('phase', (data) => {
 
   if (data.phase === 'waiting') {
     S.myBet = null; S.myCashedOut = false; S.cashOutMult = null;
+    localStorage.removeItem('activeBet');
     S.graphPoints = []; S.multiplier = 1.00;
     showCountdown(data.countdown || 10);
     setMultiplierUI(1.00, 'waiting');
@@ -1595,9 +1653,24 @@ socket.on('balanceUpdate', ({ balance_lamports }) => {
 
 socket.on('betConfirmed', ({ amount }) => {
   S.myBet = parseFloat(amount);
+  localStorage.setItem('activeBet', JSON.stringify({ amount: S.myBet, roundId: S.roundId }));
   setStatus(`✓ Bet placed: ${S.myBet.toFixed(4)} SOL`, 'success');
   updateBetUI();
   // betPlaced broadcast handles adding to playersMap for everyone including ourselves
+});
+
+// Restore bet state after a page refresh mid-round
+socket.on('betRestored', ({ amount, autoCashOut, cashedOut, cashOutAt, payout }) => {
+  S.myBet = parseFloat(amount);
+  if (cashedOut) {
+    S.myCashedOut = true;
+    S.cashOutMult = cashOutAt;
+    setStatus(`🎉 Cashed out @ ${cashOutAt}× — +${parseFloat(payout).toFixed(4)} SOL`, 'success');
+  } else {
+    S.myCashedOut = false;
+    setStatus(`✓ Bet active: ${S.myBet.toFixed(4)} SOL`, 'success');
+  }
+  updateBetUI();
 });
 
 socket.on('betError',    (msg) => setStatus(msg, 'error'));
@@ -1606,6 +1679,10 @@ socket.on('cashOutError',(msg) => setStatus(msg, 'error'));
 socket.on('cashedOut', ({ multiplier, payout, amount }) => {
   S.myCashedOut = true;
   S.cashOutMult = multiplier;
+  try {
+    const stored = JSON.parse(localStorage.getItem('activeBet') || 'null');
+    if (stored) localStorage.setItem('activeBet', JSON.stringify({ ...stored, cashedOut: true, cashOutAt: multiplier, payout }));
+  } catch {}
   // Balance updated via balanceUpdate event from server
   setStatus(`🎉 Cashed out @ ${multiplier}× — +${payout.toFixed ? payout.toFixed(4) : payout} SOL`, 'success');
   setMultiplierUI(multiplier, 'cashed');
@@ -1658,7 +1735,7 @@ async function connectWallet(silent = false) {
   updateBetUI();
   applyProfile();
   fetchProfileFromServer(S.wallet);
-  socket.emit('register', { wallet: S.wallet });
+  attemptRegister();
   updateNetworkBadge();
 }
 

@@ -240,6 +240,11 @@ let game = {
   countdownInterval: null,
 };
 
+// Per-round lock: wallets whose placeBet is currently awaiting the DB debit.
+// Prevents two concurrent placeBet calls from both passing the game.bets check
+// before either one writes the result (double-spend race condition).
+const pendingBets = new Set();
+
 // ─── House Edge Config ────────────────────────────────────────────────────────
 const HOUSE_EDGE         = 0.01;  // 1% baked into crash point distribution
 const CASHOUT_FEE        = 0.01;  // 1% fee on every cashout payout
@@ -291,6 +296,7 @@ function startCountdown() {
 
   game.phase      = 'waiting';
   game.bets       = {};
+  pendingBets.clear();
   game.multiplier = 1.00;
   game.countdown  = 20;
   game.crashPoint = generateCrashPoint();
@@ -395,9 +401,19 @@ function processCashOut(wallet) {
 }
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
-const walletSockets = {};
-const chatHistory   = [];
-const chatRates     = new Map(); // socketId → { count, resetAt }
+const walletSockets    = {};
+const socketChallenges = {}; // socketId → nonce (for register auth)
+const sessionTokens    = {}; // token → { wallet, expires }
+const chatHistory      = [];
+const chatRates        = new Map(); // socketId → { count, resetAt }
+
+// Clean up expired session tokens hourly
+setInterval(() => {
+  const now = Date.now();
+  for (const [tok, s] of Object.entries(sessionTokens)) {
+    if (now > s.expires) delete sessionTokens[tok];
+  }
+}, 60 * 60 * 1000);
 
 (async () => {
   if (!db) return;
@@ -410,6 +426,11 @@ const chatRates     = new Map(); // socketId → { count, resetAt }
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
+
+  // Issue a one-time challenge so the client can prove wallet ownership
+  const nonce = crypto.randomBytes(32).toString('hex');
+  socketChallenges[socket.id] = nonce;
+  socket.emit('challenge', { nonce });
 
   const networkMode = !db ? 'demo' : SOLANA_RPC.includes('mainnet') ? 'mainnet' : 'devnet';
   socket.emit('init', {
@@ -424,9 +445,59 @@ io.on('connection', (socket) => {
   if (chatHistory.length > 0) socket.emit('chatHistory', chatHistory);
   io.emit('onlineCount', io.sockets.sockets.size);
 
-  socket.on('register', async ({ wallet }) => {
+  socket.on('register', async ({ wallet, signature, nonce, token } = {}) => {
     if (!wallet) return;
+
+    // ── Path 1: session-token re-auth (no Phantom popup on reconnect) ──────
+    if (token) {
+      const session = sessionTokens[token];
+      if (!session || session.wallet !== wallet || Date.now() > session.expires) {
+        socket.emit('authError', 'Session expired. Please reconnect your wallet.');
+        return;
+      }
+      session.expires = Date.now() + 24 * 60 * 60 * 1000; // refresh TTL
+    } else {
+      // ── Path 2: first-time auth via Ed25519 Phantom signature ───────────
+      if (!signature || !nonce) {
+        socket.emit('authError', 'Wallet ownership proof required.');
+        return;
+      }
+      if (socketChallenges[socket.id] !== nonce) {
+        socket.emit('authError', 'Invalid challenge nonce.');
+        return;
+      }
+      try {
+        const message  = `pumprocket-register:${wallet}:${nonce}`;
+        const msgBytes = Buffer.from(message, 'utf8');
+        const sigBytes = Buffer.from(signature, 'hex');
+        const DER_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+        const derPub = Buffer.concat([DER_PREFIX, Buffer.from(new PublicKey(wallet).toBytes())]);
+        const pubKey = crypto.createPublicKey({ key: derPub, format: 'der', type: 'spki' });
+        if (!crypto.verify(null, msgBytes, pubKey, sigBytes)) throw new Error('bad sig');
+      } catch {
+        socket.emit('authError', 'Signature verification failed.');
+        return;
+      }
+      // Issue a 24-hour session token so reconnects skip re-signing
+      const newToken = crypto.randomBytes(32).toString('hex');
+      sessionTokens[newToken] = { wallet, expires: Date.now() + 24 * 60 * 60 * 1000 };
+      socket.emit('sessionToken', { token: newToken });
+    }
+
     walletSockets[wallet] = socket.id;
+
+    // Restore active bet so a page refresh doesn't lose bet state
+    const activeBet = game.bets[wallet];
+    if (activeBet && !activeBet.lost) {
+      socket.emit('betRestored', {
+        amount:      activeBet.amount,
+        autoCashOut: activeBet.autoCashOut,
+        cashedOut:   activeBet.cashedOut,
+        cashOutAt:   activeBet.cashOutAt  || null,
+        payout:      activeBet.payout     || null,
+      });
+    }
+
     if (db) {
       db.from('users').upsert({ wallet, last_seen: new Date().toISOString() }, { onConflict: 'wallet' }).then(() => {});
       try {
@@ -444,16 +515,20 @@ io.on('connection', (socket) => {
     if (!amount || amount <= 0 || isNaN(amount)) return socket.emit('betError', 'Invalid amount.');
     if (game.phase !== 'waiting')  return socket.emit('betError', 'Betting is closed. Wait for next round.');
     if (game.bets[wallet])         return socket.emit('betError', 'Bet already placed this round.');
+    if (pendingBets.has(wallet))   return socket.emit('betError', 'Bet already in progress.');
 
+    pendingBets.add(wallet); // hold the lock before any async work
     const lamports = Math.round(amount * 1e9);
     if (db) {
       try {
         await db.debitBalance(wallet, lamports);
         await db.logTransaction(wallet, 'bet', lamports, String(game.roundId));
       } catch {
+        pendingBets.delete(wallet);
         return socket.emit('betError', 'Insufficient balance. Deposit more SOL to play.');
       }
     }
+    pendingBets.delete(wallet);
 
     game.bets[wallet] = {
       amount,
@@ -509,6 +584,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     chatRates.delete(socket.id);
+    delete socketChallenges[socket.id];
     for (const [w, sid] of Object.entries(walletSockets)) {
       if (sid === socket.id) delete walletSockets[w];
     }
