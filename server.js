@@ -246,7 +246,7 @@ app.get('/api/active-bet', async (req, res) => {
   }
 
   // DB fallback (handles cases where game.bets was cleared)
-  if (!db || game.phase !== 'flying') return res.json({ active: false });
+  if (!db || game.phase === 'crashed') return res.json({ active: false });
   try {
     const dbBet = await db.getActiveBet(wallet);
     if (!dbBet || dbBet.round_id !== game.roundId) return res.json({ active: false });
@@ -262,8 +262,7 @@ app.get('/api/active-bet', async (req, res) => {
   } catch { return res.json({ active: false }); }
 });
 
-// Clear any stale active_bets left over from a previous server session
-if (db) db.clearAllActiveBets().catch(e => console.warn('[db] clearAllActiveBets on start:', e.message));
+// (active_bets are NOT cleared on start — they are restored below)
 
 // ─── Game State ───────────────────────────────────────────────────────────────
 let game = {
@@ -535,7 +534,7 @@ io.on('connection', (socket) => {
         cashOutAt:   activeBet.cashOutAt  || null,
         payout:      activeBet.payout     || null,
       });
-    } else if (db && game.phase === 'flying') {
+    } else if (db && (game.phase === 'flying' || game.phase === 'waiting')) {
       // DB fallback: bet may have been placed in this round before a server restart
       try {
         const dbBet = await db.getActiveBet(wallet);
@@ -792,8 +791,45 @@ app.get('/api/admin/check-deposits', async (req, res) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`🚀 Crash game running at http://localhost:${PORT}`);
   console.log(`🏦 House wallet (deposit here): ${authority.publicKey.toString()}`);
-  startCountdown();
+
+  // Restore round state from DB (active bets saved before server restart)
+  if (db) {
+    try {
+      const { data } = await db.from('active_bets').select('*');
+      if (data && data.length > 0) {
+        // Only consider bets placed within the last 10 minutes (prevents restoring very old stale bets)
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        const recent = data.filter(r => new Date(r.created_at).getTime() > cutoff);
+        if (recent.length > 0) {
+          const savedRoundId = Math.max(...recent.map(r => r.round_id));
+          game.roundId = savedRoundId;
+          console.log(`[db] Resuming from round ${game.roundId} with ${recent.filter(r => r.round_id === savedRoundId).length} active bet(s)`);
+        }
+      }
+    } catch (e) { console.error('[db] Failed to restore round state:', e.message); }
+  }
+
+  startCountdown(); // Uses game.roundId (possibly restored from DB above)
+
+  // After startCountdown resets game.bets, re-inject the restored bets
+  if (db) {
+    try {
+      const { data } = await db.from('active_bets').select('*');
+      if (data && data.length > 0) {
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        for (const row of data) {
+          if (row.round_id === game.roundId && new Date(row.created_at).getTime() > cutoff) {
+            game.bets[row.wallet] = {
+              amount:      parseFloat(row.amount_sol),
+              cashedOut:   false,
+              autoCashOut: row.auto_cash_out ? parseFloat(row.auto_cash_out) : null,
+            };
+          }
+        }
+      }
+    } catch (e) { console.error('[db] Failed to restore active bets:', e.message); }
+  }
 });
