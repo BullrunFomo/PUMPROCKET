@@ -226,6 +226,23 @@ app.post('/api/withdraw', async (req, res) => {
 app.get('/api/state',   (_req, res) => res.json({ phase: game.phase, roundId: game.roundId, multiplier: game.multiplier, countdown: game.countdown, history: game.history }));
 app.get('/api/history', (_req, res) => res.json({ history: game.history }));
 
+// Returns the wallet's active bet for the current round (used to restore UI on page refresh)
+app.get('/api/active-bet', (req, res) => {
+  const { wallet } = req.query;
+  if (!wallet) return res.json({ active: false });
+  const bet = game.bets[wallet];
+  if (!bet || bet.lost) return res.json({ active: false });
+  res.json({
+    active:      true,
+    amount:      bet.amount,
+    cashedOut:   bet.cashedOut,
+    cashOutAt:   bet.cashOutAt   || null,
+    payout:      bet.payout      || null,
+    autoCashOut: bet.autoCashOut || null,
+    roundId:     game.roundId,
+  });
+});
+
 // ─── Game State ───────────────────────────────────────────────────────────────
 let game = {
   phase:      'waiting',

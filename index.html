@@ -1722,11 +1722,25 @@ async function connectWallet(silent = false) {
   btn.classList.add('connected');
   document.getElementById('headerProfileAvatar').style.display = 'flex';
   updateBalanceDisplay();
-  updateBetUI();
   applyProfile();
   fetchProfileFromServer(S.wallet);
   doRegister();
   updateNetworkBadge();
+
+  // Restore active bet state from server (reliable — no socket timing dependency)
+  fetch(`/api/active-bet?wallet=${encodeURIComponent(S.wallet)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.active) {
+        S.myBet       = d.amount;
+        S.myCashedOut = d.cashedOut;
+        S.cashOutMult = d.cashOutAt;
+        // also persist to localStorage so subsequent refreshes restore instantly
+        localStorage.setItem('activeBet', JSON.stringify({ amount: d.amount, roundId: d.roundId, cashedOut: d.cashedOut, cashOutAt: d.cashOutAt, payout: d.payout }));
+      }
+      updateBetUI();
+    })
+    .catch(() => updateBetUI());
 }
 
 document.getElementById('connectWallet').addEventListener('click', async () => {
