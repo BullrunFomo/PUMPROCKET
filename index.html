@@ -1734,8 +1734,8 @@ function updateNetworkBadge() {
   const label = document.getElementById('networkBadgeLabel');
   const n = S.serverNetwork;
   if (n === 'demo')    { label.textContent = '◉ Offchain - Demo Mode'; label.style.color = '#aaa'; }
-  else if (n === 'mainnet') { label.textContent = '◉ Onchain - Mainnet'; label.style.color = '#00E4A2'; }
-  else                 { label.textContent = '◉ Onchain - Devnet';  label.style.color = '#00E4A2'; }
+  else if (n === 'mainnet') { label.textContent = '◉ Mainnet'; label.style.color = '#00E4A2'; }
+  else                 { label.textContent = '◉ Devnet';  label.style.color = '#00E4A2'; }
 }
 
 async function connectWallet(silent = false) {
